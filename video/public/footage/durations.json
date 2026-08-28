@@ -1,0 +1,18 @@
+{
+  "clip1-search": {
+    "file": "footage/clip1-search.webm",
+    "seconds": 6.56
+  },
+  "clip2-checkout": {
+    "file": "footage/clip2-checkout.webm",
+    "seconds": 13.28
+  },
+  "clip3-tools": {
+    "file": "footage/clip3-tools.webm",
+    "seconds": 8.12
+  },
+  "clip4-spa": {
+    "file": "footage/clip4-spa.webm",
+    "seconds": 7.6
+  }
+}

@@ -1,0 +1,41 @@
+/** Shared design tokens + measured timeline data for the demo video. */
+
+export const COLORS = {
+  bg: '#0C111D',
+  bgSoft: '#141C2E',
+  ink: '#FFFFFF',
+  muted: '#98A2B3',
+  accent: '#7F56D9',
+  accentSoft: 'rgba(127,86,217,0.18)',
+  ok: '#12B76A',
+  warn: '#F79009',
+  danger: '#F97066',
+  line: 'rgba(255,255,255,0.10)',
+};
+
+export const FONT =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+export const MONO = 'ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", monospace';
+
+export const FPS = 30;
+
+/** Narration durations measured by scripts/generate-narration.ts (afinfo). */
+export const NARRATION: Record<string, number> = {
+  scene1: 10.1,
+  scene2: 17.4,
+  scene3: 14.7,
+  scene4: 15.4,
+  scene5: 11.9,
+  scene6: 9.4,
+  scene7: 3.5,
+};
+
+/** Footage clip durations measured by scripts (mediabunny). */
+export const FOOTAGE: Record<string, number> = {
+  'clip1-search': 6.6,
+  'clip2-checkout': 13.3,
+  'clip3-tools': 8.1,
+  'clip4-spa': 7.6,
+};
+
+export const round1 = (n: number): number => Math.round(n * 10) / 10;

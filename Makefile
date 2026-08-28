@@ -50,6 +50,16 @@ ci: ## Full verification gate: typecheck → build → unit → E2E
 demo: ## Serve demo store + test page at http://localhost:$(PORT)
 	bun run demo
 
+footage: ## Re-capture real product footage + narration into video/public/
+	bun scripts/capture-footage.ts
+	bun scripts/generate-narration.ts
+
+video: ## Render the demo video (video/out/agentready-demo.mp4)
+	cd video && bunx remotion render AgentReadyDemo out/agentready-demo.mp4
+
+studio: ## Open Remotion Studio for the video project
+	cd video && bunx remotion studio --no-open
+
 deploy-netlify: ## Deploy demo/store to Netlify (prompts for login on first run)
 	bunx netlify-cli@latest deploy --dir demo/store --prod
 

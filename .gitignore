@@ -1,5 +1,6 @@
 node_modules/
 build/
 dist/*.min.js
+video/out/
 .DS_Store
 *.log
