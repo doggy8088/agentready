@@ -50,5 +50,14 @@ ci: ## Full verification gate: typecheck → build → unit → E2E
 demo: ## Serve demo store + test page at http://localhost:$(PORT)
 	bun run demo
 
+deploy-netlify: ## Deploy demo/store to Netlify (prompts for login on first run)
+	bunx netlify-cli@latest deploy --dir demo/store --prod
+
+deploy-vercel: ## Deploy demo/store to Vercel (links project on first run)
+	bunx vercel@latest demo/store --prod
+
+deploy-cloudflare: ## Deploy demo/store to Cloudflare Pages (login on first run)
+	bunx wrangler@latest pages deploy demo/store --project-name agentready-demo
+
 clean: ## Remove build artifacts
 	rm -rf build dist/*.min.js
