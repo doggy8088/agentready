@@ -1,0 +1,7 @@
+publish = "demo/store"
+command = "bun run build"
+
+[[headers]]
+  for = "/vendor/agentready.js"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

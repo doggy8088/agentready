@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>AgentReady Demo Store</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- The entire integration: one script tag. -->
+  <script src="vendor/agentready.js" defer></script>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <span class="logo">⌂ AgentReady Store</span>
+      <nav aria-label="Primary">
+        <a href="#" data-view="products" class="active">Products</a>
+        <a href="#" data-view="orders">Orders</a>
+        <a href="#" data-view="account">Account</a>
+      </nav>
+      <button id="cart-btn" aria-label="Open cart">🛒 Cart (<span id="cart-count">0</span>)</button>
+    </div>
+  </header>
+
+  <main id="view-products">
+    <section class="hero">
+      <h1>Gear for builders</h1>
+      <p>A deliberately ordinary storefront. The only special thing here is the one script tag above.</p>
+    </section>
+
+    <form id="search-form" aria-label="Product search" action="#" method="get">
+      <label for="q">Search products</label>
+      <input id="q" name="q" type="search" placeholder="Search the catalog…" />
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        <option>Keyboards</option>
+        <option>Mice</option>
+        <option>Monitors</option>
+        <option>Audio</option>
+      </select>
+      <label for="max_price">Max price</label>
+      <input id="max_price" name="max_price" type="number" min="0" max="2000" step="10" />
+      <button type="submit">Search</button>
+    </form>
+
+    <section id="results" aria-label="Product results"></section>
+  </main>
+
+  <main id="view-orders" hidden>
+    <h1>Your orders</h1>
+    <div id="order-list"><p class="muted">No orders yet. Checkout to create one.</p></div>
+    <button id="clear-orders" class="danger">Delete all order history</button>
+  </main>
+
+  <main id="view-account" hidden>
+    <h1>Account</h1>
+    <form id="profile-form" aria-label="Update profile" action="#" method="post">
+      <fieldset>
+        <legend>Contact</legend>
+        <label for="name">Full name</label>
+        <input id="name" name="name" required />
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required />
+      </fieldset>
+      <fieldset>
+        <legend>Preferences</legend>
+        <label for="theme">Theme</label>
+        <select id="theme" name="theme">
+          <option>Light</option><option>Dark</option><option>System</option>
+        </select>
+        <label><input type="checkbox" name="newsletter" /> Subscribe to the newsletter</label>
+      </fieldset>
+      <button type="submit">Save profile</button>
+    </form>
+  </main>
+
+  <main id="view-checkout" hidden>
+    <h1>Checkout</h1>
+    <form id="checkout-form" aria-label="Checkout form" action="#" method="post">
+      <label for="co_name">Name on card</label>
+      <input id="co_name" name="co_name" required />
+      <label for="co_email">Email for receipt</label>
+      <input id="co_email" name="co_email" type="email" required />
+      <label for="co_address">Shipping address</label>
+      <input id="co_address" name="co_address" required />
+      <fieldset>
+        <legend>Payment (sensitive — agents can fill the form but this store demoes redaction)</legend>
+        <label for="card_number">Card number</label>
+        <input id="card_number" name="card_number" autocomplete="cc-number" inputmode="numeric" />
+        <label for="card_cvc">CVC</label>
+        <input id="card_cvc" name="card_cvc" autocomplete="cc-cvc" />
+        <label for="account_password">Account password</label>
+        <input id="account_password" name="account_password" type="password" autocomplete="new-password" />
+      </fieldset>
+      <button type="submit">Place order</button>
+    </form>
+  </main>
+
+  <aside id="cart-drawer" hidden aria-label="Shopping cart">
+    <h2>Cart</h2>
+    <ul id="cart-items"></ul>
+    <p id="cart-total"></p>
+    <button id="checkout-btn">Go to checkout</button>
+  </aside>
+
+  <footer class="muted wrap">
+    Demo site for AgentReady.js — WebMCP Challenge 2026. MIT licensed.
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

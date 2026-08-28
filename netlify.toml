@@ -1,0 +1,8 @@
+[build]
+  command = "bun run build"
+  publish = "demo/store"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
