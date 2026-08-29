@@ -32,7 +32,8 @@ realistic — so AgentReady.js derives the tool layer automatically:
 
 The same page then works with **any** WebMCP agent — ChatGPT, an in-page agent, or a future
 client — because everything is exposed through the standard `document.modelContext` API
-(with an identical in-page fallback for browsers without it).
+(with a `navigator.modelContext` fallback for Firefox, and an identical in-page fallback for
+browsers without it — including ChatGPT desktop's register-only client).
 
 ```
             Human
@@ -196,8 +197,10 @@ tests/                bun:test unit + Playwright E2E
 
 ### Testing in a WebMCP browser
 
-- **ChatGPT desktop app** — the in-app browser supports WebMCP by default.
+- **ChatGPT desktop app** — the in-app browser supports WebMCP by default (register-only client;
+  AgentReady detects it and keeps `getTools`/`executeTool` in-page).
 - **Chrome 149+** — enable `chrome://flags/#enable-webmcp-testing`, restart, done.
+- **Firefox** — AgentReady also detects `navigator.modelContext`.
 - Without the native API, AgentReady runs its in-page shim: all tools still work through
   `window.AgentReady` — useful for local dev (`http://localhost`) and non-WebMCP browsers.
 

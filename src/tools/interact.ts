@@ -13,6 +13,7 @@ import type { AgentEnv } from '../env.js';
 export function activateTargetTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'activate_target',
+    title: 'Activate target',
     description:
       'Activate a page element by ref: click buttons, links, tabs, toggles. ' +
       'Consequential actions (submit, pay, delete) require user approval in the on-page panel.',
@@ -29,6 +30,7 @@ export function activateTargetTool(env: AgentEnv): ToolDefinition {
 export function setFieldTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'set_field',
+    title: 'Set field',
     description: 'Set one form field by ref: text inputs, textarea, select, checkbox, radio.',
     inputSchema: {
       type: 'object',
@@ -46,6 +48,7 @@ export function setFieldTool(env: AgentEnv): ToolDefinition {
 export function fillFormTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'fill_form',
+    title: 'Fill form',
     description:
       'Fill a form in one call. Fields are matched by human-readable label or name. ' +
       'Sensitive fields (passwords, payment) are refused. Never submits the form.',
@@ -68,6 +71,7 @@ export function fillFormTool(env: AgentEnv): ToolDefinition {
 export function submitFormTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'submit_form',
+    title: 'Submit form',
     description:
       'Submit a form after review. Always requires explicit human approval via the on-page panel. ' +
       'Use fill_form first, then submit_form with the form ref.',

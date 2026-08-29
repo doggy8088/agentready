@@ -1,6 +1,7 @@
 /**
  * AgentReady — runtime adapter.
- * Registers tools with the browser's WebMCP surface (document.modelContext)
+ * Registers tools with the browser's WebMCP surface (document.modelContext —
+ * with a navigator.modelContext fallback for engines that still ship there)
  * when available, and always maintains an in-page registry with an identical
  * getTools/executeTool shape so in-page agents (e.g. AskPage) and non-WebMCP
  * browsers get the same capabilities.
@@ -30,42 +31,95 @@ export interface RegisterOptions {
 
 interface NativeModelContext {
   registerTool(tool: unknown, opts?: RegisterOptions): Promise<void> | void;
-  getTools(opts?: { fromOrigins?: string[] }): Promise<unknown[]>;
+  getTools?(opts?: { fromOrigins?: string[] }): Promise<unknown[]>;
+  addEventListener?(type: 'toolchange', fn: () => void): void;
+}
+
+interface NativeRecord {
+  context: NativeModelContext;
+  kind: 'document' | 'navigator';
+}
+
+/** Some engines (Firefox) still expose modelContext on navigator only. */
+function detectNative(): NativeRecord | null {
+  if (typeof document === 'undefined') return null;
+  const doc = document as Document & { modelContext?: NativeModelContext };
+  if (doc.modelContext) return { context: doc.modelContext, kind: 'document' };
+  const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { modelContext?: NativeModelContext }) : null;
+  if (nav?.modelContext) return { context: nav.modelContext, kind: 'navigator' };
+  return null;
 }
 
 declare global {
   interface Document {
     modelContext?: NativeModelContext;
   }
+  interface Navigator {
+    modelContext?: NativeModelContext;
+  }
 }
 
 interface Registration {
   def: ToolDefinition;
-  opts: RegisterOptions;
 }
 
 interface PublicTool {
   name: string;
+  title: string;
   description: string;
   inputSchema: Record<string, unknown> | { type: 'object'; properties: Record<string, never> };
   annotations: ToolAnnotations;
   origin: string;
+  window: unknown;
 }
 
 const toolchangeListeners: Array<(event: { type: 'toolchange' }) => void> = [];
 
 export class Runtime {
   private readonly native: NativeModelContext | null;
+  private readonly nativeKind: 'document' | 'navigator' | null;
   private readonly registry = new Map<string, Registration>();
+  /** Signals passed by callers, so unregisterAll() can release every tool. */
+  private readonly signals = new Set<AbortSignal>();
   private readonly activitySink: (a: Activity) => void;
+  private readonly onUnregisterAll: () => void;
 
-  constructor({ onActivity }: { onActivity?: (a: Activity) => void } = {}) {
-    this.native = typeof document !== 'undefined' && document.modelContext ? document.modelContext : null;
+  constructor({
+    onActivity,
+    onNativeToolchange,
+    onUnregisterAll,
+  }: {
+    onActivity?: (a: Activity) => void;
+    onNativeToolchange?: () => void;
+    onUnregisterAll?: () => void;
+  } = {}) {
     this.activitySink = onActivity ?? (() => {});
+    this.onUnregisterAll = onUnregisterAll ?? (() => undefined);
+    const detected = detectNative();
+    this.nativeKind = detected?.kind ?? null;
+    const context = detected?.context ?? null;
+    // ChatGPT-like clients expose a frozen object with only registerTool.
+    const usable = context && typeof context.registerTool === 'function' ? context : null;
+    this.native = usable;
+    if (usable && typeof usable.addEventListener === 'function') {
+      // Native `toolchange` (no payload) — forward into our shim listeners.
+      usable.addEventListener('toolchange', () => {
+        try {
+          onNativeToolchange?.();
+        } catch {
+          // listener errors must not break the event path
+        }
+        this.emitToolchange();
+      });
+    }
   }
 
   get hasNative(): boolean {
     return !!this.native;
+  }
+
+  get nativeTransport(): 'document' | 'navigator' | 'shim' {
+    return this.native ? (this.nativeKind ?? 'shim') : 'shim';
   }
 
   get size(): number {
@@ -75,16 +129,30 @@ export class Runtime {
   /** Register a tool. Wraps execute with activity + budget + error handling. */
   async register(def: ToolDefinition, opts: RegisterOptions = {}): Promise<string> {
     const wrapped = this.wrap(def);
-    this.registry.set(def.name, { def: wrapped, opts });
+    this.registry.set(def.name, { def: wrapped });
+    if (opts.signal) {
+      if (opts.signal.aborted) {
+        this.registry.delete(def.name);
+        throw new Error(`AgentReady: signal already aborted, skipping registration of "${def.name}"`);
+      }
+      this.signals.add(opts.signal);
+    }
     if (this.native) {
       try {
         await this.native.registerTool(wrapped, { signal: opts.signal, exposedTo: opts.exposedTo });
       } catch (err) {
         this.registry.delete(def.name);
+        // PR webmachinelearning/webmcp#240: a rejected registration can leave a
+        // stale unregister step on the native signal — stop tracking it so a
+        // later unregisterAll() never aborts on a tool that never registered.
+        if (opts.signal) this.signals.delete(opts.signal);
         throw err;
       }
     }
-    this.emitToolchange();
+    if (!this.native) {
+      // Native registers fire their own toolchange; the shim must emit its own.
+      this.emitToolchange();
+    }
     return def.name;
   }
 
@@ -94,7 +162,7 @@ export class Runtime {
     const wrapped: ToolDefinition = {
       name: def.name,
       description: def.description.slice(0, MAX_DESC_CHARS),
-      inputSchema: def.inputSchema ?? { type: 'object', properties: {} },
+      inputSchema: def.inputSchema ? { ...def.inputSchema } : { type: 'object', properties: {} },
       annotations: def.annotations ?? { readOnlyHint: true, untrustedContentHint: true },
       async execute(args, ctx = {}) {
         const started = Date.now();
@@ -121,29 +189,62 @@ export class Runtime {
 
   /** Same shape as document.modelContext.getTools(). */
   async getTools(): Promise<unknown[]> {
-    if (this.native) {
+    if (this.native && typeof this.native.getTools === 'function') {
       try {
-        return await this.native.getTools();
+        const tools = await this.native.getTools();
+        return tools.map(normalizeRegisteredTool);
       } catch {
-        // fall through to in-page registry
+        // Some native builds wedge or reject getTools — fall through to the
+        // in-page registry, which always has the authoritative AgentReady set.
       }
     }
     return Array.from(this.registry.values()).map(({ def }) => publicTool(def));
   }
 
-  /** Same shape as document.modelContext.executeTool(): args must be a JSON string. */
+  /**
+   * In-page shim mirroring document.modelContext.executeTool(). Accepts the
+   * caller's args as a JSON string (current Chrome/WPT shape) OR a plain
+   * object (current CG-DRAFT shape, webmcp#246); the tool callback always
+   * receives a parsed object.
+   */
   async executeTool(
     nameOrTool: string | { name?: string },
-    argsJson: string | Record<string, unknown>,
+    args: string | Record<string, unknown>,
     opts: { signal?: AbortSignal } = {}
   ): Promise<unknown> {
     const name = typeof nameOrTool === 'string' ? nameOrTool : nameOrTool?.name;
-    if (!name) throw new Error('AgentReady: tool name required');
+    if (!name) throw new Error(`AgentReady: tool name required`);
     const entry = this.registry.get(name);
     if (!entry) throw new Error(`AgentReady: unknown tool "${name}"`);
-    const args: Record<string, unknown> =
-      typeof argsJson === 'string' ? (JSON.parse(argsJson || '{}') as Record<string, unknown>) : (argsJson ?? {});
-    return entry.def.execute(args, opts);
+    let input: Record<string, unknown>;
+    if (typeof args === 'string') {
+      try {
+        const parsed = JSON.parse(args || '{}') as unknown;
+        if (parsed === null || typeof parsed !== 'object') {
+          throw new TypeError('Input must be an object');
+        }
+        input = parsed as Record<string, unknown>;
+      } catch (err) {
+        throw new Error(
+          `AgentReady: invalid JSON input for "${name}" — ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    } else {
+      input = args ?? {};
+    }
+    return entry.def.execute(input, opts);
+  }
+
+  /**
+   * Clear every tool. The owner-side controllers are aborted via the
+   * onUnregisterAll callback supplied at construction (the runtime only ever
+   * sees signals, and aborting a foreign signal is engine-dependent), then the
+   * shim registry is cleared.
+   */
+  unregisterAll(): void {
+    this.onUnregisterAll();
+    this.registry.clear();
+    this.emitToolchange();
   }
 
   emitToolchange(): void {
@@ -166,22 +267,46 @@ export class Runtime {
   }
 }
 
+/** Chrome ≤153 returns inputSchema as a JSON string, 154+ as an object (#241). */
+function normalizeRegisteredTool(tool: unknown): unknown {
+  if (!tool || typeof tool !== 'object') return tool;
+  const t = tool as { inputSchema?: unknown; title?: string };
+  let schema = t.inputSchema;
+  if (typeof schema === 'string') {
+    try {
+      schema = JSON.parse(schema) as Record<string, unknown>;
+    } catch {
+      schema = undefined; // omit rather than leak an unparseable string
+    }
+  }
+  return { ...t, title: t.title ?? '', ...(schema !== undefined ? { inputSchema: schema } : {}) };
+}
+
 function publicTool(def: ToolDefinition): PublicTool {
   return {
     name: def.name,
+    title: def.title ?? '',
     description: def.description,
-    inputSchema: def.inputSchema ?? { type: 'object', properties: {} },
+    inputSchema: def.inputSchema ? { ...def.inputSchema } : { type: 'object', properties: {} },
     annotations: def.annotations ?? { readOnlyHint: true, untrustedContentHint: true },
     origin: typeof location !== 'undefined' ? location.origin : '',
+    window: typeof window !== 'undefined' ? window : undefined,
   };
 }
 
 /** Enforce output budget on whatever the tool returned. */
-function clampResult(result: unknown): string | unknown[] {
+function clampResult(result: unknown): unknown {
   if (result == null) return 'OK';
   if (typeof result === 'string') return clampOutput(result);
-  if (Array.isArray(result) && result.length > 0 && (result[0] as { content?: unknown } | undefined)?.content !== undefined) {
-    return result;
+  // MCP-style response { content: [{ type: 'text', text }] }: clamp each text.
+  if (result && typeof result === 'object' && Array.isArray((result as { content?: unknown }).content)) {
+    const response = result as { content: Array<{ type?: string; text?: string }>; isError?: boolean };
+    return {
+      ...response,
+      content: response.content.map((part) =>
+        part?.type === 'text' && typeof part.text === 'string' ? { ...part, text: clampOutput(part.text) } : part
+      ),
+    };
   }
   return clampOutput(JSON.stringify(result) ?? 'null');
 }

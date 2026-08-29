@@ -20,6 +20,13 @@ import type { AgentEnv, AgentReadyApi, AgentReadyConfig } from './env.js';
 
 const VERSION = '0.1.0';
 
+/** Controllers for every tool registration (core per-tool + form batches). */
+const trackedControllers = new Set<AbortController>();
+const track = (c: AbortController): AbortController => {
+  trackedControllers.add(c);
+  return c;
+};
+
 declare global {
   interface Window {
     AgentReady?: AgentReadyApi;
@@ -27,8 +34,6 @@ declare global {
     __agentready?: boolean;
   }
 }
-
-const coreAbort = new AbortController();
 
 async function boot(): Promise<void> {
   if (window.__agentready) return;
@@ -40,7 +45,7 @@ async function boot(): Promise<void> {
     ...(window.AgentReadyConfig ?? {}),
   } as AgentReadyConfig;
   if (!window.isSecureContext) {
-    console.warn('[AgentReady] Not a secure context: document.modelContext requires HTTPS. Tools are still exposed in-page.');
+    console.warn('[AgentReady] Not a secure context: WebMCP requires HTTPS (or localhost). Tools are still exposed in-page.');
   }
 
   const inspector = config.inspector ? new Inspector({ siteLabel: config.siteName }) : null;
@@ -49,6 +54,10 @@ async function boot(): Promise<void> {
     onActivity: (a) => {
       inspector?.logActivity(a);
       inspector?.setBusy(a.phase === 'start');
+    },
+    onUnregisterAll: () => {
+      for (const c of trackedControllers) if (!c.signal.aborted) c.abort();
+      trackedControllers.clear();
     },
   });
 
@@ -76,7 +85,9 @@ async function boot(): Promise<void> {
   exposePublicApi(runtime, env, config);
 
   console.info(
-    `[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${runtime.hasNative ? 'yes' : 'in-page shim (document.modelContext unavailable)'}`
+    `[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${
+      runtime.hasNative ? `yes (${runtime.nativeTransport})` : 'in-page shim (no transport on this engine)'
+    }`
   );
 }
 
@@ -128,8 +139,10 @@ async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<void>
     submitFormTool(env),
   ];
   for (const tool of core) {
+    // One controller per tool: a rejected registration must never be followed
+    // by an abort of the same signal (webmcp PR #240 stale-unregister guard).
     try {
-      await runtime.register(tool, { signal: coreAbort.signal });
+      await runtime.register(tool, { signal: track(new AbortController()).signal });
     } catch (err) {
       console.warn(`[AgentReady] Could not register core tool ${tool.name}:`, err instanceof Error ? err.message : err);
     }
@@ -137,35 +150,39 @@ async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<void>
 }
 
 async function registerFormTools(runtime: Runtime, env: AgentEnv): Promise<() => Promise<void>> {
-  const controller = new AbortController();
-  let previous = controller;
-  const registerBatch = async (): Promise<void> => {
+  let previousControllers: AbortController[] = [];
+
+  const registerBatch = async (): Promise<AbortController[]> => {
+    const controllers: AbortController[] = [];
     try {
       const tools = synthesizeFormTools(env);
       for (const t of tools) {
+        const controller = track(new AbortController());
         try {
           await runtime.register(t, { signal: controller.signal });
+          controllers.push(controller);
         } catch (err) {
+          // PR webmcp#240: never abort a signal whose registration failed —
+          // drop it from tracking so unregisterAll() will not touch it either.
+          trackedControllers.delete(controller);
           console.warn(`[AgentReady] Skipped form tool ${t.name}:`, err instanceof Error ? err.message : err);
         }
       }
     } catch (err) {
       console.warn('[AgentReady] Form synthesis failed:', err instanceof Error ? err.message : err);
     }
+    return controllers;
   };
-  await registerBatch();
+
+  previousControllers = await registerBatch();
   return async function resynth(): Promise<void> {
-    previous.abort();
-    const next = new AbortController();
-    const tools = synthesizeFormTools(env);
-    for (const t of tools) {
-      try {
-        await runtime.register(t, { signal: next.signal });
-      } catch {
-        // duplicate or invalid — skip
-      }
+    // Retire the previous batch (abort → native unregister), then register the
+    // fresh batch under brand-new signals.
+    for (const controller of previousControllers) {
+      trackedControllers.delete(controller);
+      if (!controller.signal.aborted) controller.abort();
     }
-    previous = next;
+    previousControllers = await registerBatch();
   };
 }
 
@@ -184,7 +201,7 @@ function exposePublicApi(runtime: Runtime, env: AgentEnv, config: AgentReadyConf
       await runtime.register(d);
       return d.name;
     },
-    unregisterAll: () => coreAbort.abort(),
+    unregisterAll: () => runtime.unregisterAll(),
     inspect: (): Discovery => env.discover(),
     maxOutputChars: MAX_OUTPUT_CHARS,
   };

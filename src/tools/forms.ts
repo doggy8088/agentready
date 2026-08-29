@@ -15,6 +15,9 @@ import type { AgentEnv, FormFieldSpec, FormInfo } from '../env.js';
 
 const MAX_SYNTHESIZED = 8;
 const MAX_OPTIONS_IN_SCHEMA = 24;
+// Chrome secure-tools guidance: ≤30 chars per tool name, ≤150 per param description.
+const MAX_NAME_CHARS = 30;
+const MAX_PARAM_DESC_CHARS = 150;
 
 export function synthesizeFormTools(env: AgentEnv): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
@@ -113,7 +116,7 @@ function buildTool(env: AgentEnv, info: FormInfo, name: string): ToolDefinition 
   for (const f of info.fields) {
     properties[f.key] = {
       type: f.type,
-      description: f.description,
+      description: f.description.slice(0, MAX_PARAM_DESC_CHARS),
       ...(f.enum ? { enum: f.enum } : {}),
       ...(f.minimum !== undefined ? { minimum: f.minimum } : {}),
       ...(f.maximum !== undefined ? { maximum: f.maximum } : {}),
@@ -124,11 +127,18 @@ function buildTool(env: AgentEnv, info: FormInfo, name: string): ToolDefinition 
     info.submitPolicy === 'auto-submit'
       ? 'Runs the search immediately.'
       : 'Fills the form but never submits it — call submit_form when ready.';
+  const title = info.formEl.getAttribute('aria-label') ?? name.replace(/_/g, ' ');
 
   return {
     name,
+    title: title.slice(0, MAX_NAME_CHARS),
     description: `${info.description} ${submitNote}`.trim(),
-    inputSchema: { type: 'object', properties, ...(required.length ? { required } : {}) },
+    inputSchema: {
+      type: 'object',
+      properties,
+      additionalProperties: false,
+      ...(required.length ? { required } : {}),
+    },
     annotations: {
       readOnlyHint: info.submitPolicy === 'auto-submit',
       untrustedContentHint: true,
@@ -266,5 +276,5 @@ function slug(s: unknown): string {
     .replace(/\.[a-z]+$/, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
+    .slice(0, MAX_NAME_CHARS);
 }

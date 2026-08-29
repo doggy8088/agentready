@@ -92,32 +92,73 @@
   }
 
   // build/src/runtime.js
+  function detectNative() {
+    if (typeof document === "undefined")
+      return null;
+    const doc = document;
+    if (doc.modelContext)
+      return { context: doc.modelContext, kind: "document" };
+    const nav = typeof navigator !== "undefined" ? navigator : null;
+    if (nav?.modelContext)
+      return { context: nav.modelContext, kind: "navigator" };
+    return null;
+  }
   var toolchangeListeners = [];
 
   class Runtime {
-    constructor({ onActivity } = {}) {
+    constructor({ onActivity, onNativeToolchange, onUnregisterAll } = {}) {
       this.registry = new Map;
-      this.native = typeof document !== "undefined" && document.modelContext ? document.modelContext : null;
+      this.signals = new Set;
       this.activitySink = onActivity ?? (() => {});
+      this.onUnregisterAll = onUnregisterAll ?? (() => {
+        return;
+      });
+      const detected = detectNative();
+      this.nativeKind = detected?.kind ?? null;
+      const context = detected?.context ?? null;
+      const usable = context && typeof context.registerTool === "function" ? context : null;
+      this.native = usable;
+      if (usable && typeof usable.addEventListener === "function") {
+        usable.addEventListener("toolchange", () => {
+          try {
+            onNativeToolchange?.();
+          } catch {}
+          this.emitToolchange();
+        });
+      }
     }
     get hasNative() {
       return !!this.native;
+    }
+    get nativeTransport() {
+      return this.native ? this.nativeKind ?? "shim" : "shim";
     }
     get size() {
       return this.registry.size;
     }
     async register(def, opts = {}) {
       const wrapped = this.wrap(def);
-      this.registry.set(def.name, { def: wrapped, opts });
+      this.registry.set(def.name, { def: wrapped });
+      if (opts.signal) {
+        if (opts.signal.aborted) {
+          this.registry.delete(def.name);
+          throw new Error(`AgentReady: signal already aborted, skipping registration of "${def.name}"`);
+        }
+        this.signals.add(opts.signal);
+      }
       if (this.native) {
         try {
           await this.native.registerTool(wrapped, { signal: opts.signal, exposedTo: opts.exposedTo });
         } catch (err) {
           this.registry.delete(def.name);
+          if (opts.signal)
+            this.signals.delete(opts.signal);
           throw err;
         }
       }
-      this.emitToolchange();
+      if (!this.native) {
+        this.emitToolchange();
+      }
       return def.name;
     }
     wrap(def) {
@@ -126,7 +167,7 @@
       const wrapped = {
         name: def.name,
         description: def.description.slice(0, MAX_DESC_CHARS),
-        inputSchema: def.inputSchema ?? { type: "object", properties: {} },
+        inputSchema: def.inputSchema ? { ...def.inputSchema } : { type: "object", properties: {} },
         annotations: def.annotations ?? { readOnlyHint: true, untrustedContentHint: true },
         async execute(args, ctx = {}) {
           const started = Date.now();
@@ -152,22 +193,41 @@
       return wrapped;
     }
     async getTools() {
-      if (this.native) {
+      if (this.native && typeof this.native.getTools === "function") {
         try {
-          return await this.native.getTools();
+          const tools = await this.native.getTools();
+          return tools.map(normalizeRegisteredTool);
         } catch {}
       }
       return Array.from(this.registry.values()).map(({ def }) => publicTool(def));
     }
-    async executeTool(nameOrTool, argsJson, opts = {}) {
+    async executeTool(nameOrTool, args, opts = {}) {
       const name = typeof nameOrTool === "string" ? nameOrTool : nameOrTool?.name;
       if (!name)
-        throw new Error("AgentReady: tool name required");
+        throw new Error(`AgentReady: tool name required`);
       const entry = this.registry.get(name);
       if (!entry)
         throw new Error(`AgentReady: unknown tool "${name}"`);
-      const args = typeof argsJson === "string" ? JSON.parse(argsJson || "{}") : argsJson ?? {};
-      return entry.def.execute(args, opts);
+      let input;
+      if (typeof args === "string") {
+        try {
+          const parsed = JSON.parse(args || "{}");
+          if (parsed === null || typeof parsed !== "object") {
+            throw new TypeError("Input must be an object");
+          }
+          input = parsed;
+        } catch (err) {
+          throw new Error(`AgentReady: invalid JSON input for "${name}" — ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else {
+        input = args ?? {};
+      }
+      return entry.def.execute(input, opts);
+    }
+    unregisterAll() {
+      this.onUnregisterAll();
+      this.registry.clear();
+      this.emitToolchange();
     }
     emitToolchange() {
       for (const fn of toolchangeListeners) {
@@ -189,13 +249,29 @@
       };
     }
   }
+  function normalizeRegisteredTool(tool) {
+    if (!tool || typeof tool !== "object")
+      return tool;
+    const t = tool;
+    let schema = t.inputSchema;
+    if (typeof schema === "string") {
+      try {
+        schema = JSON.parse(schema);
+      } catch {
+        schema = undefined;
+      }
+    }
+    return { ...t, title: t.title ?? "", ...schema !== undefined ? { inputSchema: schema } : {} };
+  }
   function publicTool(def) {
     return {
       name: def.name,
+      title: def.title ?? "",
       description: def.description,
-      inputSchema: def.inputSchema ?? { type: "object", properties: {} },
+      inputSchema: def.inputSchema ? { ...def.inputSchema } : { type: "object", properties: {} },
       annotations: def.annotations ?? { readOnlyHint: true, untrustedContentHint: true },
-      origin: typeof location !== "undefined" ? location.origin : ""
+      origin: typeof location !== "undefined" ? location.origin : "",
+      window: typeof window !== "undefined" ? window : undefined
     };
   }
   function clampResult(result) {
@@ -203,8 +279,12 @@
       return "OK";
     if (typeof result === "string")
       return clampOutput(result);
-    if (Array.isArray(result) && result.length > 0 && result[0]?.content !== undefined) {
-      return result;
+    if (result && typeof result === "object" && Array.isArray(result.content)) {
+      const response = result;
+      return {
+        ...response,
+        content: response.content.map((part) => part?.type === "text" && typeof part.text === "string" ? { ...part, text: clampOutput(part.text) } : part)
+      };
     }
     return clampOutput(JSON.stringify(result) ?? "null");
   }
@@ -676,6 +756,7 @@
   function activateTargetTool(env) {
     return {
       name: "activate_target",
+      title: "Activate target",
       description: "Activate a page element by ref: click buttons, links, tabs, toggles. " + "Consequential actions (submit, pay, delete) require user approval in the on-page panel.",
       inputSchema: {
         type: "object",
@@ -689,6 +770,7 @@
   function setFieldTool(env) {
     return {
       name: "set_field",
+      title: "Set field",
       description: "Set one form field by ref: text inputs, textarea, select, checkbox, radio.",
       inputSchema: {
         type: "object",
@@ -705,6 +787,7 @@
   function fillFormTool(env) {
     return {
       name: "fill_form",
+      title: "Fill form",
       description: "Fill a form in one call. Fields are matched by human-readable label or name. " + "Sensitive fields (passwords, payment) are refused. Never submits the form.",
       inputSchema: {
         type: "object",
@@ -724,6 +807,7 @@
   function submitFormTool(env) {
     return {
       name: "submit_form",
+      title: "Submit form",
       description: "Submit a form after review. Always requires explicit human approval via the on-page panel. " + "Use fill_form first, then submit_form with the form ref.",
       inputSchema: {
         type: "object",
@@ -857,6 +941,7 @@
   function pageContextTool(env) {
     return {
       name: "get_page_context",
+      title: "Page context",
       description: "Get a semantic summary of the current page: title, headings, regions, " + "available actions overview, and forms. Call this first to orient.",
       inputSchema: { type: "object", properties: {} },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
@@ -866,6 +951,7 @@
   function findTool(env) {
     return {
       name: "find_on_page",
+      title: "Find on page",
       description: "Find interactive elements or content on the page by natural-language description. " + "Returns semantic refs usable with read_target / activate_target / set_field. " + 'kind: "any" | "action" (buttons, links, tabs) | "field" (inputs, selects).',
       inputSchema: {
         type: "object",
@@ -882,6 +968,7 @@
   function readTargetTool(env) {
     return {
       name: "read_target",
+      title: "Read target",
       description: "Read details of one element by semantic ref: current value, options, link target, " + "or surrounding content.",
       inputSchema: {
         type: "object",
@@ -957,6 +1044,8 @@
   // build/src/tools/forms.js
   var MAX_SYNTHESIZED = 8;
   var MAX_OPTIONS_IN_SCHEMA = 24;
+  var MAX_NAME_CHARS = 30;
+  var MAX_PARAM_DESC_CHARS = 150;
   function synthesizeFormTools(env) {
     const tools = [];
     const used = new Set;
@@ -1046,7 +1135,7 @@
     for (const f of info.fields) {
       properties[f.key] = {
         type: f.type,
-        description: f.description,
+        description: f.description.slice(0, MAX_PARAM_DESC_CHARS),
         ...f.enum ? { enum: f.enum } : {},
         ...f.minimum !== undefined ? { minimum: f.minimum } : {},
         ...f.maximum !== undefined ? { maximum: f.maximum } : {}
@@ -1055,10 +1144,17 @@
         required.push(f.key);
     }
     const submitNote = info.submitPolicy === "auto-submit" ? "Runs the search immediately." : "Fills the form but never submits it — call submit_form when ready.";
+    const title = info.formEl.getAttribute("aria-label") ?? name.replace(/_/g, " ");
     return {
       name,
+      title: title.slice(0, MAX_NAME_CHARS),
       description: `${info.description} ${submitNote}`.trim(),
-      inputSchema: { type: "object", properties, ...required.length ? { required } : {} },
+      inputSchema: {
+        type: "object",
+        properties,
+        additionalProperties: false,
+        ...required.length ? { required } : {}
+      },
       annotations: {
         readOnlyHint: info.submitPolicy === "auto-submit",
         untrustedContentHint: true
@@ -1185,12 +1281,16 @@
     return cls.submitPolicy;
   }
   function slug(s) {
-    return String(s ?? "").toLowerCase().replace(/\.[a-z]+$/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+    return String(s ?? "").toLowerCase().replace(/\.[a-z]+$/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, MAX_NAME_CHARS);
   }
 
   // build/src/index.js
   var VERSION = "0.1.0";
-  var coreAbort = new AbortController;
+  var trackedControllers = new Set;
+  var track = (c) => {
+    trackedControllers.add(c);
+    return c;
+  };
   async function boot() {
     if (window.__agentready)
       return;
@@ -1202,7 +1302,7 @@
       ...window.AgentReadyConfig ?? {}
     };
     if (!window.isSecureContext) {
-      console.warn("[AgentReady] Not a secure context: document.modelContext requires HTTPS. Tools are still exposed in-page.");
+      console.warn("[AgentReady] Not a secure context: WebMCP requires HTTPS (or localhost). Tools are still exposed in-page.");
     }
     const inspector = config.inspector ? new Inspector({ siteLabel: config.siteName }) : null;
     const env = createEnv(config, inspector);
@@ -1210,6 +1310,12 @@
       onActivity: (a) => {
         inspector?.logActivity(a);
         inspector?.setBusy(a.phase === "start");
+      },
+      onUnregisterAll: () => {
+        for (const c of trackedControllers)
+          if (!c.signal.aborted)
+            c.abort();
+        trackedControllers.clear();
       }
     });
     await registerCoreTools(runtime, envAwake(env));
@@ -1231,7 +1337,7 @@
       attributeFilter: ["hidden", "style", "class"]
     });
     exposePublicApi(runtime, env, config);
-    console.info(`[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${runtime.hasNative ? "yes" : "in-page shim (document.modelContext unavailable)"}`);
+    console.info(`[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${runtime.hasNative ? `yes (${runtime.nativeTransport})` : "in-page shim (no transport on this engine)"}`);
   }
   function createEnv(config, inspector) {
     let snapshotCache = null;
@@ -1281,40 +1387,41 @@
     ];
     for (const tool of core) {
       try {
-        await runtime.register(tool, { signal: coreAbort.signal });
+        await runtime.register(tool, { signal: track(new AbortController).signal });
       } catch (err) {
         console.warn(`[AgentReady] Could not register core tool ${tool.name}:`, err instanceof Error ? err.message : err);
       }
     }
   }
   async function registerFormTools(runtime, env) {
-    const controller = new AbortController;
-    let previous = controller;
+    let previousControllers = [];
     const registerBatch = async () => {
+      const controllers = [];
       try {
         const tools = synthesizeFormTools(env);
         for (const t of tools) {
+          const controller = track(new AbortController);
           try {
             await runtime.register(t, { signal: controller.signal });
+            controllers.push(controller);
           } catch (err) {
+            trackedControllers.delete(controller);
             console.warn(`[AgentReady] Skipped form tool ${t.name}:`, err instanceof Error ? err.message : err);
           }
         }
       } catch (err) {
         console.warn("[AgentReady] Form synthesis failed:", err instanceof Error ? err.message : err);
       }
+      return controllers;
     };
-    await registerBatch();
+    previousControllers = await registerBatch();
     return async function resynth() {
-      previous.abort();
-      const next = new AbortController;
-      const tools = synthesizeFormTools(env);
-      for (const t of tools) {
-        try {
-          await runtime.register(t, { signal: next.signal });
-        } catch {}
+      for (const controller of previousControllers) {
+        trackedControllers.delete(controller);
+        if (!controller.signal.aborted)
+          controller.abort();
       }
-      previous = next;
+      previousControllers = await registerBatch();
     };
   }
   function exposePublicApi(runtime, env, config) {
@@ -1331,7 +1438,7 @@
         await runtime.register(d);
         return d.name;
       },
-      unregisterAll: () => coreAbort.abort(),
+      unregisterAll: () => runtime.unregisterAll(),
       inspect: () => env.discover(),
       maxOutputChars: MAX_OUTPUT_CHARS
     };

@@ -378,3 +378,166 @@ describe('runtime shim + write tools', () => {
     expect(out).toContain('truncated');
   });
 });
+// ---------- audit fixes (research findings E1–E7) ----------
+
+describe('audit fixes E1–E7', () => {
+  interface StubModelContext {
+    registerTool: (tool: unknown, opts?: unknown) => void | Promise<void>;
+    getTools?: () => Promise<unknown[]>;
+    addEventListener?: (type: string, fn: () => void) => void;
+  }
+
+  const setGlobals = (doc: unknown, nav?: { modelContext?: StubModelContext }): void => {
+    (globalThis as unknown as { document?: unknown }).document = doc;
+    (globalThis as unknown as { navigator?: unknown }).navigator = nav ?? globalThis.navigator;
+  };
+  const clearGlobals = (win?: Window): void => {
+    if (win) delete (win.navigator as unknown as { modelContext?: unknown }).modelContext;
+    delete (globalThis as unknown as { document?: unknown }).document;
+  };
+
+  it('E1: falls back to navigator.modelContext when document has none', async () => {
+    const win = new Window({ url: 'https://fb.example.com/' });
+    const registered: unknown[] = [];
+    const stub: StubModelContext = { registerTool: (t) => void registered.push(t) };
+    (win.navigator as unknown as { modelContext?: StubModelContext }).modelContext = stub;
+    setGlobals(win.document, win.navigator as unknown as { modelContext?: StubModelContext });
+    try {
+      const rt = new Runtime();
+      expect(rt.hasNative).toBe(true);
+      expect(rt.nativeTransport).toBe('navigator');
+      await rt.register({ name: 'nav_tool', description: 'works', execute: () => 'ok' });
+      expect(registered.length).toBe(1);
+      expect((registered[0] as { name: string }).name).toBe('nav_tool');
+    } finally {
+      clearGlobals(win);
+    }
+  });
+
+  it('E2: shim getTools() exposes RegisteredTool title and window keys', async () => {
+    const rt = new Runtime();
+    await rt.register({ name: 'titled', description: 'd', title: 'T', execute: () => 1 });
+    const tools = (await rt.getTools()) as Array<Record<string, unknown>>;
+    expect(tools[0]!.title).toBe('T');
+    expect('window' in tools[0]!).toBe(true);
+    expect('origin' in tools[0]!).toBe(true);
+    // Missing title defaults to "" (spec issue #224 — do not hard-code undefined).
+    await rt.register({ name: 'untitled', description: 'd', execute: () => 1 });
+    const again = (await rt.getTools()) as Array<{ title: string; name: string }>;
+    expect(again.find((t) => t.name === 'untitled')!.title).toBe('');
+  });
+
+  it('E3: unregisterAll clears the registry and fires the owner abort callback', async () => {
+    let ownerAborts = 0;
+    const rt = new Runtime({ onUnregisterAll: () => ownerAborts++ });
+    await rt.register({ name: 'a', description: 'd', execute: () => 1 }, { signal: new AbortController().signal });
+    await rt.register({ name: 'b', description: 'd', execute: () => 1 }, { signal: new AbortController().signal });
+    rt.unregisterAll();
+    expect(ownerAborts).toBe(1);
+    expect((await rt.getTools()).length).toBe(0);
+  });
+
+  it('E3b: a rejected registration is skipped and unregisterAll remains healthy', async () => {
+    let ownerAborts = 0;
+    const rt = new Runtime({ onUnregisterAll: () => ownerAborts++ });
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      rt.register({ name: 'x', description: 'd', execute: () => 1 }, { signal: aborted.signal })
+    ).rejects.toThrow(/already aborted/);
+    const good = new AbortController();
+    await rt.register({ name: 'x2', description: 'd', execute: () => 1 }, { signal: good.signal });
+    rt.unregisterAll();
+    expect(ownerAborts).toBe(1);
+    expect((await rt.getTools()).length).toBe(0);
+  });
+
+  it('E4: synthesized tool names are capped at 30 chars (secure-tools budget)', () => {
+    const doc = mount(`<form aria-label="${'a'.repeat(60)}"><input name="q"><button>Go</button></form>`);
+    const tools = synthesizeFormTools(makeEnv(doc));
+    expect(tools[0]!.name.length).toBeLessThanOrEqual(30);
+  });
+
+  it('E4b: parameter descriptions are capped at 150 chars', () => {
+    const doc = mount(`
+      <form aria-label="Long desc form" method="post">
+        <label for="f1">Field</label><input id="f1" name="f1" aria-describedby="h1">
+        <p id="h1">${'x'.repeat(300)}</p>
+        <button>Save</button>
+      </form>`);
+    const tools = synthesizeFormTools(makeEnv(doc)) as unknown as Array<{
+      inputSchema: { properties: Record<string, { description: string } | undefined> };
+    }>;
+    const desc = tools[0]!.inputSchema.properties.f1!.description;
+    expect(desc.length).toBeLessThanOrEqual(150);
+  });
+
+  it('E5: executeTool accepts object args, rejects primitives, allows arrays (WPT parity)', async () => {
+    const rt = new Runtime();
+    await rt.register({ name: 'probe', description: 'd', execute: (args) => Array.isArray(args) ? 'array' : 'object' });
+    await expect(rt.executeTool('probe', { a: 1 })).resolves.toBe('object');
+    await expect(rt.executeTool('probe', '{"a":1}')).resolves.toBe('object');
+    await expect(rt.executeTool('probe', '[1,2,3]')).resolves.toBe('array');
+    await expect(rt.executeTool('probe', '"scalar"')).rejects.toThrow(/invalid JSON input/);
+    await expect(rt.executeTool('probe', 'null')).rejects.toThrow(/invalid JSON input/);
+  });
+
+  it('E6: MCP-style { content } responses get the 1.5K text clamp', async () => {
+    const rt = new Runtime();
+    await rt.register({
+      name: 'blocks',
+      description: 'd',
+      execute: () => ({ content: [{ type: 'text', text: 'y'.repeat(1600) }] }),
+    });
+    const out = (await rt.executeTool('blocks', {})) as { content: Array<{ type: string; text: string }> };
+    expect(out.content[0]!.type).toBe('text');
+    expect(out.content[0]!.text).toContain('truncated');
+  });
+
+  it('E7: native toolchange events forward into shim listeners; no double-fire on register', async () => {
+    const listeners: Array<() => void> = [];
+    const fakeNative: StubModelContext = {
+      registerTool: () => undefined,
+      addEventListener: (_type, fn) => listeners.push(fn),
+    };
+    const win = new Window({ url: 'https://native.example.com/' });
+    (win.document as unknown as { modelContext?: StubModelContext }).modelContext = fakeNative;
+    setGlobals(win.document);
+    try {
+      const rt = new Runtime();
+      expect(rt.hasNative).toBe(true);
+      expect(rt.nativeTransport).toBe('document');
+      let fired = 0;
+      rt.on('toolchange', () => fired++);
+      await rt.register({ name: 'n1', description: 'd', execute: () => 1 });
+      expect(fired).toBe(0); // native path relies on the real native event
+      for (const fn of listeners) fn();
+      expect(fired).toBe(1);
+    } finally {
+      delete (win.document as unknown as { modelContext?: unknown }).modelContext;
+      clearGlobals(win);
+    }
+  });
+
+  it('E7b: getTools() normalizes string inputSchema and missing title from native', async () => {
+    const fakeNative: StubModelContext = {
+      registerTool: () => undefined,
+      getTools: async () => [
+        { name: 'a', title: undefined, description: 'd', inputSchema: '{"type":"object"}', origin: 'https://x.test' },
+      ],
+    };
+    const win = new Window({ url: 'https://native2.example.com/' });
+    (win.document as unknown as { modelContext?: StubModelContext }).modelContext = fakeNative;
+    setGlobals(win.document);
+    try {
+      const rt = new Runtime();
+      const tools = (await rt.getTools()) as Array<{ name: string; title: string; inputSchema: unknown }>;
+      expect(tools[0]!.title).toBe('');
+      expect(typeof tools[0]!.inputSchema).toBe('object');
+      expect((tools[0]!.inputSchema as { type: string }).type).toBe('object');
+    } finally {
+      delete (win.document as unknown as { modelContext?: unknown }).modelContext;
+      clearGlobals(win);
+    }
+  });
+});

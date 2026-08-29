@@ -11,6 +11,7 @@ import type { AgentEnv, FormInfo } from '../env.js';
 export function pageContextTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'get_page_context',
+    title: 'Page context',
     description:
       'Get a semantic summary of the current page: title, headings, regions, ' +
       'available actions overview, and forms. Call this first to orient.',
@@ -23,6 +24,7 @@ export function pageContextTool(env: AgentEnv): ToolDefinition {
 export function findTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'find_on_page',
+    title: 'Find on page',
     description:
       'Find interactive elements or content on the page by natural-language description. ' +
       'Returns semantic refs usable with read_target / activate_target / set_field. ' +
@@ -43,6 +45,7 @@ export function findTool(env: AgentEnv): ToolDefinition {
 export function readTargetTool(env: AgentEnv): ToolDefinition {
   return {
     name: 'read_target',
+    title: 'Read target',
     description:
       'Read details of one element by semantic ref: current value, options, link target, ' +
       'or surrounding content.',
