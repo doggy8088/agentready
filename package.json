@@ -25,6 +25,7 @@
     "browser",
     "mcp"
   ],
+  "author": "Will Huang",
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "^1.4.0",

@@ -16,6 +16,8 @@ Humans keep using the same interface. Agents get a reliable interface of their o
 
 Built for the **WebMCP Challenge** (Sep 2026).
 
+> 🌐 繁體中文版:[README.zh-tw.md](./README.zh-tw.md)
+
 ---
 
 ## Why this matters
@@ -213,4 +215,4 @@ drag it into Netlify, `vercel deploy`, `npx wrangler pages deploy`, or any stati
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](./LICENSE) © 2026 Will Huang
