@@ -1,6 +1,10 @@
 node_modules/
 build/
-dist/*.min.js
 video/out/
 .DS_Store
 *.log
+dist/agentready-types.tar.gz
+dist/*.d.ts
+dist/tools/
+test-results/
+playwright-report/

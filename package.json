@@ -4,6 +4,7 @@
   "description": "One JavaScript file that makes any website agent-ready: semantic HTML, forms, navigation and app state become safe, structured WebMCP tools.",
   "type": "module",
   "main": "dist/agentready.js",
+  "types": "dist/index.d.ts",
   "files": [
     "dist",
     "README.md",
@@ -11,11 +12,15 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "build:types": "tsc -p tsconfig.types.json",
     "build": "tsc -p tsconfig.build.json && bun build build/src/index.js --outfile dist/agentready.js --format=iife --target=browser && mkdir -p demo/store/vendor && cp dist/agentready.js demo/store/vendor/agentready.js && cp build/demo/store/app.js demo/store/app.js && cp build/demo/test-page/status.js demo/test-page/status.js",
     "build:min": "bun build build/src/index.js --outfile dist/agentready.min.js --format=iife --target=browser --minify",
+    "size": "bun run scripts/check-size.ts",
     "test": "bun test tests/agentready.test.ts",
     "test:e2e": "bun test tests/e2e",
     "test:all": "bun run typecheck && bun run test && bun run test:e2e",
+    "check": "bun run typecheck && bun run test && bun run size",
+    "ci": "bun run typecheck && bun run build:types && bun run build && bun run build:min && bun run test && bun run size && bun run test:e2e",
     "demo": "bun run scripts/serve.ts --port 8788"
   },
   "keywords": [

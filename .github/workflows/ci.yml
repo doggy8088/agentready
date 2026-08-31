@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, Build, Test & E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Strict Typecheck
+        run: bun run typecheck
+
+      - name: Build TypeScript Declarations
+        run: bun run build:types
+
+      - name: Build Browser Bundles
+        run: |
+          bun run build
+          bun run build:min
+
+      - name: Run Unit Tests
+        run: bun run test
+
+      - name: Check Bundle Sizes & Output Summary
+        run: |
+          bun run scripts/check-size.ts --markdown >> $GITHUB_STEP_SUMMARY
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('bun.lock') }}
+
+      - name: Install Playwright Dependencies & Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: bunx playwright install --with-deps chromium
+
+      - name: Install Playwright OS Dependencies (if cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: bunx playwright install-deps chromium
+
+      - name: Run End-to-End Tests
+        run: bun run test:e2e
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentready-dist
+          path: dist/
+          retention-days: 7

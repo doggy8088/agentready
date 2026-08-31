@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name (e.g. v0.1.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Strict Typecheck
+        run: bun run typecheck
+
+      - name: Run unit tests
+        run: bun run test
+
+      - name: Build TypeScript Declarations
+        run: bun run build:types
+
+      - name: Build Browser Bundles
+        run: |
+          bun run build
+          bun run build:min
+
+      - name: Check Bundle Sizes & Output Summary
+        run: |
+          bun run scripts/check-size.ts --markdown >> $GITHUB_STEP_SUMMARY
+
+      - name: Determine Tag
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release Archive for Types
+        run: |
+          tar -czf dist/agentready-types.tar.gz -C dist $(cd dist && ls *.d.ts)
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: Release ${{ steps.vars.outputs.tag }}
+          files: |
+            dist/agentready.js
+            dist/agentready.min.js
+            dist/agentready-types.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
