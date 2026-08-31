@@ -21,7 +21,7 @@ PORT ?= 8788
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install typecheck types build build-min size test test-e2e test-all check ci demo release-tag clean
+.PHONY: help install typecheck types build build-min size test test-e2e test-all check ci demo footage video studio release-tag clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'

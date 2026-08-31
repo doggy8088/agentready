@@ -40,7 +40,7 @@ async function record(
   settleMs: number
 ): Promise<void> {
   const ctx = await browser.newContext({
-    viewport: { width: 1600, height: 1000 },
+    viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: OUT, size: { width: 1920, height: 1080 } },
   });
   const page = await ctx.newPage();

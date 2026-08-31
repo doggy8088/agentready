@@ -45,8 +45,8 @@ const Card: React.FC<{
           style={{
             color: COLORS.ink,
             fontFamily: MONO,
-            fontSize: 24,
-            padding: '7px 0',
+            fontSize: 21,
+            padding: '8px 0',
             opacity: interpolate(frame, [from + 10 + i * 6, from + 22 + i * 6], [0, 1], {
               extrapolateLeft: 'clamp',
               extrapolateRight: 'clamp',
@@ -118,7 +118,7 @@ export const Scene2How: React.FC = () => {
           from={78}
           title="WebMCP tools"
           accent={COLORS.ok}
-          width={500}
+          width={530}
           lines={[
             'search_products({ q, max_price })',
             'find_on_page("add to cart")',

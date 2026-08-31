@@ -104,25 +104,31 @@ export const Caption: React.FC<{ text: string; delaySeconds?: number }> = ({ tex
     <div
       style={{
         position: 'absolute',
-        left: 64,
-        right: 64,
-        bottom: 44,
+        left: 0,
+        right: 0,
+        bottom: 36,
         display: 'flex',
         justifyContent: 'center',
         opacity,
+        pointerEvents: 'none',
       }}
     >
       <div
         style={{
-          background: 'rgba(12,17,29,0.82)',
+          background: 'rgba(12, 17, 29, 0.90)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           border: `1px solid ${COLORS.line}`,
-          borderRadius: 14,
-          padding: '14px 26px',
+          borderRadius: 16,
+          padding: '12px 28px',
           color: COLORS.ink,
           fontFamily: FONT,
-          fontSize: 30,
+          fontSize: 26,
           fontWeight: 600,
           letterSpacing: 0.2,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          maxWidth: 1300,
+          textAlign: 'center',
         }}
       >
         {text}
@@ -142,20 +148,23 @@ export const TitleChip: React.FC<{ text: string }> = ({ text }) => {
     <div
       style={{
         position: 'absolute',
-        top: 44,
-        left: 56,
+        top: 24,
+        right: 40,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
         opacity,
-        background: 'rgba(12,17,29,0.85)',
+        background: 'rgba(12, 17, 29, 0.90)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         border: `1px solid ${COLORS.line}`,
         borderRadius: 999,
-        padding: '10px 20px',
+        padding: '10px 22px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
       }}
     >
       <div style={{ width: 12, height: 12, borderRadius: 999, background: COLORS.ok }} />
-      <div style={{ color: COLORS.ink, fontFamily: FONT, fontSize: 28, fontWeight: 800 }}>
+      <div style={{ color: COLORS.ink, fontFamily: FONT, fontSize: 24, fontWeight: 800 }}>
         AgentReady <span style={{ color: COLORS.muted, fontWeight: 500 }}>— {text}</span>
       </div>
     </div>

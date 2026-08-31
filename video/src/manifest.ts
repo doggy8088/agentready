@@ -21,13 +21,13 @@ export const FPS = 30;
 
 /** Narration durations measured by scripts/generate-narration.ts (afinfo). */
 export const NARRATION: Record<string, number> = {
-  scene1: 10.1,
-  scene2: 17.4,
-  scene3: 14.7,
-  scene4: 15.4,
-  scene5: 11.9,
-  scene6: 9.4,
-  scene7: 3.5,
+  scene1: 12.5,
+  scene2: 17.6,
+  scene3: 17.5,
+  scene4: 15.5,
+  scene5: 12.2,
+  scene6: 11.0,
+  scene7: 3.7,
 };
 
 /** Footage clip durations measured by scripts (mediabunny). */

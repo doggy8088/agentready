@@ -1,16 +1,16 @@
 :root { color-scheme: light; --ink: #101828; --muted: #667085; --line: #eaecf0; --accent: #7f56d9; --ok: #12b76a; }
 * { box-sizing: border-box; }
 body { margin: 0; font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--ink); background: #fcfcfd; }
-.wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 header { position: sticky; top: 0; background: #fff; border-bottom: 1px solid var(--line); z-index: 10; }
-header .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
-.logo { font-weight: 700; }
-nav { display: flex; gap: 16px; flex: 1; }
-nav a { color: var(--muted); text-decoration: none; padding: 6px 2px; border-bottom: 2px solid transparent; }
+header .wrap { display: flex; align-items: center; gap: 24px; height: 68px; font-size: 16px; }
+.logo { font-weight: 700; font-size: 18px; }
+nav { display: flex; gap: 20px; flex: 1; }
+nav a { color: var(--muted); text-decoration: none; padding: 6px 2px; border-bottom: 2px solid transparent; font-size: 16px; }
 nav a.active { color: var(--accent); border-color: var(--accent); font-weight: 600; }
-main { max-width: 980px; margin: 24px auto; padding: 0 20px; }
-h1 { font-size: 28px; margin: 8px 0; }
-.hero { padding: 8px 0 16px; }
+main { max-width: 1120px; margin: 32px auto; padding: 0 24px; }
+h1 { font-size: 32px; margin: 8px 0; }
+.hero { padding: 8px 0 20px; font-size: 17px; }
 .muted { color: var(--muted); }
 button, .btn { cursor: pointer; }
 #cart-btn { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 16px; cursor: pointer; }

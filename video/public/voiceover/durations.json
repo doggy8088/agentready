@@ -1,30 +1,30 @@
 {
   "scene1": {
     "file": "voiceover/scene1.m4a",
-    "seconds": 10.075828
+    "seconds": 12.5
   },
   "scene2": {
     "file": "voiceover/scene2.m4a",
-    "seconds": 17.401723
+    "seconds": 17.6
   },
   "scene3": {
     "file": "voiceover/scene3.m4a",
-    "seconds": 14.741678
+    "seconds": 17.5
   },
   "scene4": {
     "file": "voiceover/scene4.m4a",
-    "seconds": 15.368163
+    "seconds": 15.5
   },
   "scene5": {
     "file": "voiceover/scene5.m4a",
-    "seconds": 11.85805
+    "seconds": 12.2
   },
   "scene6": {
     "file": "voiceover/scene6.m4a",
-    "seconds": 9.360499
+    "seconds": 11
   },
   "scene7": {
     "file": "voiceover/scene7.m4a",
-    "seconds": 3.467937
+    "seconds": 3.7
   }
 }
