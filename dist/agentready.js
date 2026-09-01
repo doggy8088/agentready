@@ -318,6 +318,8 @@
 
   class Inspector {
     constructor({ siteLabel } = {}) {
+      this.gateChain = Promise.resolve();
+      this.pendingGates = 0;
       this.host = document.createElement("div");
       this.host.setAttribute("data-agentready-ui", "");
       this.shadow = this.host.attachShadow({ mode: "open" });
@@ -400,9 +402,20 @@
         }, 1600);
       }
     }
-    confirmGate({ title, detail, level = "confirm", el, timeoutMs = 30000 }) {
-      if (level === "allow")
+    confirmGate(req) {
+      if (req.level === "allow")
         return Promise.resolve(true);
+      const start = () => this.runGate(req);
+      const run = this.pendingGates === 0 ? start() : this.gateChain.then(start, start);
+      this.pendingGates++;
+      this.gateChain = run.then(() => {
+        this.pendingGates--;
+      }, () => {
+        this.pendingGates--;
+      });
+      return run;
+    }
+    runGate({ title, detail, el, timeoutMs = 30000 }) {
       return new Promise((resolve) => {
         this.setBusy(true);
         el?.scrollIntoView?.({ block: "center", behavior: "smooth" });

@@ -822,6 +822,50 @@ describe('inspector confirmGate (characterization)', () => {
       expect(confirmBox.style.display).toBe('none');
     });
   });
+
+  it('serializes concurrent gates: one approve click resolves exactly one request', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
+      const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
+      const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
+      expect(confirmBox.querySelector('h4')!.textContent).toBe('First request');
+      primary.click();
+      await expect(first).resolves.toBe(true);
+      let secondSettled = false;
+      void second.then(() => {
+        secondSettled = true;
+      });
+      await new Promise((r) => setTimeout(r, 20)); // the queued gate starts once the first settles
+      expect(secondSettled).toBe(false);
+      expect(confirmBox.style.display).toBe('block');
+      expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
+      primary.click();
+      await expect(second).resolves.toBe(true);
+      expect(confirmBox.style.display).toBe('none');
+    });
+  });
+
+  it('declining the first concurrent gate leaves the second pending until its own click', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
+      const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
+      const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
+      const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
+      cancel.click();
+      await expect(first).resolves.toBe(false);
+      let secondSettled = false;
+      void second.then(() => {
+        secondSettled = true;
+      });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(secondSettled).toBe(false);
+      expect(confirmBox.style.display).toBe('block');
+      expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
+      primary.click();
+      await expect(second).resolves.toBe(true);
+      expect(confirmBox.style.display).toBe('none');
+    });
+  });
 });
 
 // ---------- safety model enforcement (plan 004) ----------

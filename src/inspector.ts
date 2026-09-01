@@ -51,6 +51,8 @@ export class Inspector {
   private readonly confirmBox: HTMLElement;
   private readonly highlightBox: HTMLElement;
   private _hlTimer: ReturnType<typeof setTimeout> | undefined;
+  private gateChain: Promise<unknown> = Promise.resolve();
+  private pendingGates = 0;
 
   constructor({ siteLabel }: { siteLabel?: string } = {}) {
     this.host = document.createElement('div');
@@ -140,9 +142,26 @@ export class Inspector {
     }
   }
 
-  /** Human-in-the-loop gate. "allow" passes without a dialog. */
-  confirmGate({ title, detail, level = 'confirm', el, timeoutMs = 30000 }: ConfirmRequest & { timeoutMs?: number }): Promise<boolean> {
-    if (level === 'allow') return Promise.resolve(true);
+  /** Human-in-the-loop gate. "allow" passes without a dialog. Serialized:
+   *  while a gate is pending or queued, later requests start only after the
+   *  ones before them settle — one human click approves exactly one request. */
+  confirmGate(req: ConfirmRequest & { timeoutMs?: number }): Promise<boolean> {
+    if (req.level === 'allow') return Promise.resolve(true);
+    const start = (): Promise<boolean> => this.runGate(req);
+    const run = this.pendingGates === 0 ? start() : this.gateChain.then(start, start);
+    this.pendingGates++;
+    this.gateChain = run.then(
+      () => {
+        this.pendingGates--;
+      },
+      () => {
+        this.pendingGates--;
+      }
+    );
+    return run;
+  }
+
+  private runGate({ title, detail, el, timeoutMs = 30000 }: ConfirmRequest & { timeoutMs?: number }): Promise<boolean> {
     return new Promise((resolve) => {
       this.setBusy(true);
       (el as HTMLElement | null)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
