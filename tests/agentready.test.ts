@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Window } from 'happy-dom';
-import { classifyField, classifyForm, clampOutput, MAX_OUTPUT_CHARS } from '../src/policy.js';
+import { classifyAction, classifyField, classifyForm, clampOutput, MAX_OUTPUT_CHARS } from '../src/policy.js';
 import { discover, matchNodes, refFor, resolveRef, describeNode, escapeCss } from '../src/semantic.js';
 import type { Discovery } from '../src/semantic.js';
 import { analyzeForm, synthesizeFormTools } from '../src/tools/forms.js';
 import { setControlValue } from '../src/tools/controls.js';
 import { Runtime } from '../src/runtime.js';
 import type { AgentEnv } from '../src/env.js';
+import { pageContextTool, findTool, readTargetTool } from '../src/tools/page.js';
+import { activateTargetTool } from '../src/tools/interact.js';
+import { Inspector } from '../src/inspector.js';
 
 let document: Document;
 
@@ -587,5 +590,250 @@ describe('accuracy fixes (plan 002)', () => {
     const doc = mount('<input name="q" aria-label="q">');
     const { nodes } = discover(doc);
     expect(matchNodes('q', nodes).length).toBeGreaterThan(0);
+  });
+});
+
+// ---------- characterization: safety-critical paths (plan 003) ----------
+
+describe('read tools (characterization)', () => {
+  const mountShop = (): Document =>
+    mount(`
+    <main>
+      <h1>Dashboard</h1>
+      <form aria-label="Preferences">
+        <label for="email">Email</label><input id="email" name="email" type="email">
+        <input type="password" name="pw" aria-label="Password" value="hunter2">
+        <label for="size">Size</label>
+        <select id="size" name="size"><option value="s">Small</option><option value="l">Large</option></select>
+      </form>
+      <button aria-label="Delete account">Delete</button>
+      <a href="/support">Contact support</a>
+    </main>`);
+
+  const registerReadTools = async (env: AgentEnv): Promise<Runtime> => {
+    const runtime = new Runtime();
+    for (const t of [pageContextTool(env), findTool(env), readTargetTool(env)]) {
+      await runtime.register(t);
+    }
+    return runtime;
+  };
+
+  it('get_page_context returns structured context JSON with accurate counts', async () => {
+    const doc = mountShop();
+    const runtime = await registerReadTools(makeEnv(doc));
+    const raw = (await runtime.executeTool('get_page_context', '{}')) as string;
+    expect(raw.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+    const ctx = JSON.parse(raw) as Record<string, unknown>;
+    for (const key of ['title', 'url', 'headings', 'regions', 'counts', 'forms', 'note']) {
+      expect(key in ctx).toBe(true);
+    }
+    const counts = ctx.counts as { buttons: number; links: number; forms: number };
+    expect(counts.forms).toBe(1);
+    expect(counts.buttons).toBe(1);
+    expect(counts.links).toBe(1);
+  });
+
+  it('find_on_page returns refs with actionRisk for destructive actions', async () => {
+    const doc = mountShop();
+    const runtime = await registerReadTools(makeEnv(doc));
+    const out = JSON.parse((await runtime.executeTool('find_on_page', JSON.stringify({ query: 'Delete account' }))) as string) as {
+      results: Array<{ ref: string; role: string; name: string; actionRisk: string }>;
+    };
+    expect(out.results.length).toBeGreaterThan(0);
+    const hit = out.results[0]!;
+    expect(hit.ref).toBeTruthy();
+    expect(hit.role).toBe('button');
+    expect(hit.name).toBe('Delete account');
+    expect(hit.actionRisk).toBe('confirm');
+  });
+
+  it('find_on_page reports no match for unknown queries', async () => {
+    const doc = mountShop();
+    const runtime = await registerReadTools(makeEnv(doc));
+    const out = (await runtime.executeTool('find_on_page', JSON.stringify({ query: 'nonexistent-xyz' }))) as string;
+    expect(out).toContain('No match');
+  });
+
+  it('read_target returns select options as value/label pairs', async () => {
+    const doc = mountShop();
+    const runtime = await registerReadTools(makeEnv(doc));
+    const out = JSON.parse(
+      (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('select')!) }))) as string
+    ) as { options: Array<{ value: string; label: string }> };
+    expect(out.options).toEqual([
+      { value: 's', label: 'Small' },
+      { value: 'l', label: 'Large' },
+    ]);
+  });
+
+  it('read_target never exposes sensitive field values', async () => {
+    const doc = mountShop();
+    const runtime = await registerReadTools(makeEnv(doc));
+    const raw = (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('input[type=password]')!) }))) as string;
+    expect(raw).not.toContain('hunter2');
+    const out = JSON.parse(raw) as Record<string, unknown>;
+    expect(String(out.note)).toContain('Sensitive field');
+    expect('currentValue' in out).toBe(false);
+    expect('value' in out).toBe(false);
+  });
+});
+
+describe('activate_target gate (characterization)', () => {
+  const registerActivate = async (env: AgentEnv): Promise<Runtime> => {
+    const runtime = new Runtime();
+    await runtime.register(activateTargetTool(env));
+    return runtime;
+  };
+
+  it('allow-level targets activate without escalation', async () => {
+    const doc = mount('<main><a href="#x" id="support-link">Support link</a></main>');
+    const link = doc.querySelector('#support-link')!;
+    let clicks = 0;
+    link.addEventListener('click', () => clicks++);
+    const runtime = await registerActivate(makeEnv(doc));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: refFor(link) }))) as string;
+    expect(out).toContain('Activated "Support link"');
+    expect(clicks).toBe(1);
+  });
+
+  it('confirm-level targets are declined without side effects', async () => {
+    const doc = mount('<main><button aria-label="Delete account" id="del">Delete</button></main>');
+    const btn = doc.querySelector('#del')!;
+    let clicks = 0;
+    btn.addEventListener('click', () => clicks++);
+    const runtime = await registerActivate(makeEnv(doc, { approve: false }));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: refFor(btn) }))) as string;
+    expect(out).toContain('declined');
+    expect(clicks).toBe(0);
+  });
+
+  it('confirm-level targets activate after approval', async () => {
+    const doc = mount('<main><button aria-label="Delete account" id="del">Delete</button></main>');
+    const btn = doc.querySelector('#del')!;
+    let clicks = 0;
+    btn.addEventListener('click', () => clicks++);
+    const runtime = await registerActivate(makeEnv(doc, { approve: true }));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: refFor(btn) }))) as string;
+    expect(out).toContain('Activated');
+    expect(clicks).toBe(1);
+  });
+
+  it('reports stale refs', async () => {
+    const doc = mount('<main><button id="b">Go</button></main>');
+    const runtime = await registerActivate(makeEnv(doc));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: 'el_missing' }))) as string;
+    expect(out).toContain('stale');
+  });
+
+  it('classifyAction escalates form submits, allows plain links', () => {
+    const doc = mount('<main><form><button type="submit">Place order</button></form><a href="/x">Support</a></main>');
+    expect(classifyAction(doc.querySelector('button')!).level).toBe('confirm');
+    expect(classifyAction(doc.querySelector('a')!).level).toBe('allow');
+  });
+});
+
+describe('inspector confirmGate (characterization)', () => {
+  const withInspector = async (
+    html: string,
+    run: (ctx: { el: HTMLElement; inspector: Inspector; shadow: ShadowRoot; confirmBox: HTMLElement }) => Promise<void> | void
+  ): Promise<void> => {
+    const doc = mount(html);
+    (globalThis as unknown as { document?: Document }).document = doc;
+    const inspector = new Inspector({ siteLabel: 'test' });
+    const shadow = (inspector as unknown as { shadow: ShadowRoot }).shadow;
+    try {
+      await run({
+        el: doc.querySelector<HTMLElement>('#gate-target')!,
+        inspector,
+        shadow,
+        confirmBox: shadow.querySelector<HTMLElement>('.confirm')!,
+      });
+    } finally {
+      inspector.destroy();
+      delete (globalThis as unknown as { document?: Document }).document;
+    }
+  };
+
+  it('allow-level requests resolve true without showing the dialog', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, confirmBox }) => {
+      await expect(inspector.confirmGate({ title: 'T', detail: 'D', level: 'allow', el })).resolves.toBe(true);
+      expect(confirmBox.style.display).not.toBe('block');
+    });
+  });
+
+  it('default-level gate shows the dialog and resolves true on approve', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const p = inspector.confirmGate({ title: 'Approve me?', detail: 'Please review.', el });
+      expect(confirmBox.style.display).toBe('block');
+      expect(confirmBox.querySelector('h4')!.textContent).toBe('Approve me?');
+      shadow.querySelector<HTMLButtonElement>('.primary')!.click();
+      await expect(p).resolves.toBe(true);
+      expect(confirmBox.style.display).toBe('none');
+    });
+  });
+
+  it('fresh gate invocation resolves false on decline and hides the box', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const p = inspector.confirmGate({ title: 'T', detail: 'D', el });
+      expect(confirmBox.style.display).toBe('block');
+      shadow.querySelector<HTMLButtonElement>('.cancel')!.click();
+      await expect(p).resolves.toBe(false);
+      expect(confirmBox.style.display).toBe('none');
+    });
+  });
+
+  it('gate times out to false without any click', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const p = inspector.confirmGate({ title: 'T', detail: 'D', level: 'confirm', el, timeoutMs: 10 });
+      expect(confirmBox.style.display).toBe('block');
+      await new Promise((r) => setTimeout(r, 50));
+      await expect(p).resolves.toBe(false);
+      expect(confirmBox.style.display).toBe('none');
+      expect(shadow.querySelector<HTMLElement>('.dot')!.classList.contains('busy')).toBe(false);
+    });
+  });
+
+  it('cleans up listeners: a second gate still works after the first resolves', async () => {
+    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
+      const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
+      const first = inspector.confirmGate({ title: 'First', detail: 'D', level: 'confirm', el });
+      cancel.click();
+      await expect(first).resolves.toBe(false);
+      expect(confirmBox.style.display).toBe('none');
+      cancel.click(); // stray click on the resolved gate must be a no-op
+      const second = inspector.confirmGate({ title: 'Second', detail: 'D', level: 'confirm', el });
+      expect(confirmBox.style.display).toBe('block');
+      cancel.click();
+      await expect(second).resolves.toBe(false);
+      expect(confirmBox.style.display).toBe('none');
+    });
+  });
+});
+
+describe('config plumbing', () => {
+  it('caps find_on_page results at config.maxResults end-to-end', async () => {
+    const doc = mount(Array.from({ length: 5 }, (_, i) => `<button aria-label="widget button ${i}">W${i}</button>`).join(''));
+    const env = makeEnv(doc);
+    env.config.maxResults = 2;
+    const runtime = new Runtime();
+    await runtime.register(findTool(env));
+    const out = JSON.parse((await runtime.executeTool('find_on_page', JSON.stringify({ query: 'widget button' }))) as string) as {
+      results: unknown[];
+    };
+    expect(out.results.length).toBeGreaterThan(0);
+    expect(out.results.length).toBeLessThanOrEqual(2);
+  });
+
+  it('inspector renders the configured site label', () => {
+    const doc = mount('<main></main>');
+    (globalThis as unknown as { document?: Document }).document = doc;
+    try {
+      const inspector = new Inspector({ siteLabel: 'My Site' });
+      const shadow = (inspector as unknown as { shadow: ShadowRoot }).shadow;
+      expect(shadow.querySelector<HTMLElement>('.label')!.textContent).toBe('My Site');
+      inspector.destroy();
+    } finally {
+      delete (globalThis as unknown as { document?: Document }).document;
+    }
   });
 });
