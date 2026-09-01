@@ -13,6 +13,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
     "build:types": "tsc -p tsconfig.types.json",
     "build": "tsc -p tsconfig.build.json && bun build build/src/index.js --outfile dist/agentready.js --format=iife --target=browser && mkdir -p demo/store/vendor && cp dist/agentready.js demo/store/vendor/agentready.js && cp build/demo/store/app.js demo/store/app.js && cp build/demo/test-page/status.js demo/test-page/status.js",
     "build:min": "bun build build/src/index.js --outfile dist/agentready.min.js --format=iife --target=browser --minify",
@@ -20,8 +22,8 @@
     "test": "bun test tests/agentready.test.ts",
     "test:e2e": "bun test tests/e2e",
     "test:all": "bun run typecheck && bun run test && bun run test:e2e",
-    "check": "bun run typecheck && bun run test && bun run size",
-    "ci": "bun run typecheck && bun run build:types && bun run build && bun run build:min && bun run test && bun run size && bun run test:e2e",
+    "check": "bun run typecheck && bun run lint && bun run test && bun run size",
+    "ci": "bun run typecheck && bun run lint && bun run build:types && bun run build && bun run build:min && bun run test && bun run size && bun run test:e2e",
     "demo": "bun run scripts/serve.ts --port 8788"
   },
   "keywords": [
@@ -34,6 +36,7 @@
   "author": "Will Huang",
   "license": "MIT",
   "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
     "@google/genai": "^2.19.0",
     "@types/bun": "^1.4.0",
     "happy-dom": "^15.11.7",
