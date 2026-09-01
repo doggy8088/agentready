@@ -216,7 +216,11 @@ describe('synthesized tools + SPA updates', () => {
   }, 30000);
 
   it('find_on_page never surfaces data-agent-hide fields', async () => {
-    const out = (await agent.executeTool(page, 'find_on_page', { query: 'secret_note' })) as string;
+    // Positive control: a visible labelled field is findable.
+    const control = (await agent.executeTool(page, 'find_on_page', { query: 'email notifications', kind: 'field' })) as string;
+    expect(control).not.toContain('No match');
+    // The data-agent-hide field (aria-labelled, non-sensitive name) must be invisible to agents.
+    const out = (await agent.executeTool(page, 'find_on_page', { query: 'internal note' })) as string;
     expect(out).toContain('No match');
   }, 30000);
 });
