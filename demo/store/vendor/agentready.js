@@ -109,7 +109,6 @@
   class Runtime {
     constructor({ onActivity, onNativeToolchange, onUnregisterAll } = {}) {
       this.registry = new Map;
-      this.signals = new Set;
       this.activitySink = onActivity ?? (() => {});
       this.onUnregisterAll = onUnregisterAll ?? (() => {
         return;
@@ -145,15 +144,12 @@
           this.registry.delete(def.name);
           throw new Error(`AgentReady: signal already aborted, skipping registration of "${def.name}"`);
         }
-        this.signals.add(opts.signal);
       }
       if (this.native) {
         try {
           await this.native.registerTool(wrapped, { signal: opts.signal, exposedTo: opts.exposedTo });
         } catch (err) {
           this.registry.delete(def.name);
-          if (opts.signal)
-            this.signals.delete(opts.signal);
           throw err;
         }
       }
@@ -287,7 +283,13 @@
         content: response.content.map((part) => part?.type === "text" && typeof part.text === "string" ? { ...part, text: clampOutput(part.text) } : part)
       };
     }
-    return clampOutput(JSON.stringify(result) ?? "null");
+    let serialized;
+    try {
+      serialized = JSON.stringify(result) ?? "null";
+    } catch {
+      serialized = String(result);
+    }
+    return clampOutput(serialized);
   }
 
   // build/src/inspector.js
@@ -1343,7 +1345,7 @@
         trackedControllers.clear();
       }
     });
-    const coreNames = await registerCoreTools(runtime, envAwake(env));
+    const coreNames = await registerCoreTools(runtime, env);
     const resynth = await registerFormTools(runtime, env, coreNames);
     inspector?.setToolCount(runtime.size);
     let debounce;
@@ -1400,15 +1402,6 @@
       }
     };
     return env;
-  }
-  function envAwake(env) {
-    return new Proxy(env, {
-      get(target, prop) {
-        if (prop === "snapshot")
-          return target.discover();
-        return Reflect.get(target, prop);
-      }
-    });
   }
   async function registerCoreTools(runtime, env) {
     const core = [

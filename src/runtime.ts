@@ -79,8 +79,6 @@ export class Runtime {
   private readonly native: NativeModelContext | null;
   private readonly nativeKind: 'document' | 'navigator' | null;
   private readonly registry = new Map<string, Registration>();
-  /** Signals passed by callers, so unregisterAll() can release every tool. */
-  private readonly signals = new Set<AbortSignal>();
   private readonly activitySink: (a: Activity) => void;
   private readonly onUnregisterAll: () => void;
 
@@ -135,17 +133,12 @@ export class Runtime {
         this.registry.delete(def.name);
         throw new Error(`AgentReady: signal already aborted, skipping registration of "${def.name}"`);
       }
-      this.signals.add(opts.signal);
     }
     if (this.native) {
       try {
         await this.native.registerTool(wrapped, { signal: opts.signal, exposedTo: opts.exposedTo });
       } catch (err) {
         this.registry.delete(def.name);
-        // PR webmachinelearning/webmcp#240: a rejected registration can leave a
-        // stale unregister step on the native signal — stop tracking it so a
-        // later unregisterAll() never aborts on a tool that never registered.
-        if (opts.signal) this.signals.delete(opts.signal);
         throw err;
       }
     }
@@ -237,9 +230,8 @@ export class Runtime {
 
   /**
    * Clear every tool. The owner-side controllers are aborted via the
-   * onUnregisterAll callback supplied at construction (the runtime only ever
-   * sees signals, and aborting a foreign signal is engine-dependent), then the
-   * shim registry is cleared.
+   * onUnregisterAll callback supplied at construction (aborting a foreign
+   * signal is engine-dependent), then the shim registry is cleared.
    */
   unregisterAll(): void {
     this.onUnregisterAll();
@@ -308,5 +300,11 @@ function clampResult(result: unknown): unknown {
       ),
     };
   }
-  return clampOutput(JSON.stringify(result) ?? 'null');
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(result) ?? 'null';
+  } catch {
+    serialized = String(result); // circular/BigInt results degrade to a summary, not an error
+  }
+  return clampOutput(serialized);
 }

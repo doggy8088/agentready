@@ -61,7 +61,7 @@ async function boot(): Promise<void> {
     },
   });
 
-  const coreNames = await registerCoreTools(runtime, envAwake(env));
+  const coreNames = await registerCoreTools(runtime, env);
   const resynth = await registerFormTools(runtime, env, coreNames);
   inspector?.setToolCount(runtime.size);
 
@@ -120,16 +120,6 @@ function createEnv(config: AgentReadyConfig, inspector: Inspector | null): Agent
     onActivity: () => undefined,
   };
   return env;
-}
-
-/** Lazy snapshot: tools re-read state at call time, not at registration. */
-function envAwake(env: AgentEnv): AgentEnv {
-  return new Proxy(env, {
-    get(target, prop) {
-      if (prop === 'snapshot') return target.discover();
-      return Reflect.get(target, prop);
-    },
-  }) as AgentEnv;
 }
 
 async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<ReadonlySet<string>> {
