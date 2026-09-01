@@ -53,8 +53,8 @@ AgentReady.js is crafted with modern TypeScript and Bun for high performance and
 
 - Runtime & Adapter Layer (src/runtime.ts): Listens to native engine events, dynamically registers schemas, and manages tool life cycles. When native WebMCP is absent, it seamlessly provides spec-compliant getTools() and executeTool() methods.
 - Semantic Engine & Stable Ref Pool (src/semantic.ts): Indexes interactive elements using WeakRef to eliminate memory leaks. Elements are queried via natural language token matching without mutating the original DOM.
-- Dynamic Resynthesis (src/index.ts): Leverages a debounced MutationObserver (\Delta t \approx 100\text{ms}) to detect route transitions in SPAs and re-synthesize available tools on the fly.
-- Shadow DOM Inspector (src/inspector.ts): An isolated UI widget attached via Shadow DOM with closed encapsulation, preventing CSS collisions with host websites while rendering real-time execution logs and safety confirmation dialogs.
+- Dynamic Resynthesis (src/index.ts): Leverages a debounced MutationObserver (\Delta t \approx 300\text{ms}) to detect route transitions in SPAs and re-synthesize available tools on the fly.
+- Shadow DOM Inspector (src/inspector.ts): An isolated UI widget attached via an open Shadow DOM root, whose style isolation prevents CSS collisions with host websites while rendering real-time execution logs and safety confirmation dialogs.
 - Strict Testing Suite: 53 automated tests (39 unit + 14 E2E) — unit tests on Bun's test runner, end-to-end tests on real Chrome via Playwright.
 
 ---
