@@ -15,15 +15,27 @@ function getArg(name: string): string | undefined {
   return i >= 0 ? Bun.argv[i + 1] : undefined;
 }
 
+/** Resolve a URL pathname under root, rejecting escapes and malformed encoding. Returns null when the request must be rejected. */
+export function resolveUnderRoot(root: string, rawPathname: string): { pathname: string; resolved: string } | null {
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(rawPathname);
+  } catch {
+    return null; // malformed percent-encoding → reject
+  }
+  if (pathname.endsWith('/')) pathname += 'index.html';
+  const resolved = path.resolve(root, '.' + pathname);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+  return { pathname, resolved };
+}
+
 const server = Bun.serve({
   port,
   async fetch(req) {
     const url = new URL(req.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (pathname.endsWith('/')) pathname += 'index.html';
-    const resolved = path.resolve(root, '.' + pathname);
-    if (!resolved.startsWith(root)) return new Response('Forbidden', { status: 403 });
-    const file = Bun.file(resolved);
+    const safe = resolveUnderRoot(root, url.pathname);
+    if (!safe) return new Response('Bad request', { status: 400 });
+    const file = Bun.file(safe.resolved);
     if (!(await file.exists())) return new Response('Not found', { status: 404 });
     return new Response(file);
   },

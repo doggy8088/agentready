@@ -5,6 +5,7 @@
 
 import path from 'node:path';
 import type { Browser, Page } from 'playwright';
+import { resolveUnderRoot } from '../../scripts/serve.js';
 
 export const REPO_ROOT = path.resolve(import.meta.dir, '../..');
 
@@ -13,11 +14,9 @@ export function startServer(): { baseUrl: string; stop(): void } {
     port: 0,
     async fetch(req) {
       const url = new URL(req.url);
-      let pathname = decodeURIComponent(url.pathname);
-      if (pathname.endsWith('/')) pathname += 'index.html';
-      const resolved = path.resolve(REPO_ROOT, '.' + pathname);
-      if (!resolved.startsWith(REPO_ROOT)) return new Response('Forbidden', { status: 403 });
-      const file = Bun.file(resolved);
+      const safe = resolveUnderRoot(REPO_ROOT, url.pathname);
+      if (!safe) return new Response('Bad request', { status: 400 });
+      const file = Bun.file(safe.resolved);
       if (!(await file.exists())) return new Response('Not found', { status: 404 });
       return new Response(file);
     },
