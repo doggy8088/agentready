@@ -61,7 +61,7 @@ ci: ## Full verification gate: typecheck → types → build → min → unit �
 	bun run ci
 
 demo: ## Serve demo store + test page at http://localhost:$(PORT)
-	bun run demo
+	bun run scripts/serve.ts --port $(PORT)
 
 footage: ## Re-capture real product footage + narration into video/public/
 	bun scripts/capture-footage.ts
