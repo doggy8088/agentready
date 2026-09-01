@@ -22,6 +22,13 @@ const $ = (sel) => document.querySelector(sel);
 function money(n) {
     return `$${n.toLocaleString('en-US')}`;
 }
+function escapeHtml(s) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 function renderProducts() {
     const q = $('#q').value.trim().toLowerCase();
     const cat = $('#category').value;
@@ -33,10 +40,10 @@ function renderProducts() {
         ? hits
             .map((p) => `
       <article class="card" data-id="${p.id}">
-        <h3>${p.name}</h3>
+        <h3>${escapeHtml(p.name)}</h3>
         <p class="muted">${p.category} · ★ ${p.rating}</p>
         <p class="price">${money(p.price)}</p>
-        <button class="add" data-add="${p.id}" aria-label="Add ${p.name} to cart">Add to cart</button>
+        <button class="add" data-add="${p.id}" aria-label="Add ${escapeHtml(p.name)} to cart">Add to cart</button>
       </article>`)
             .join('')
         : '<p class="muted">No products match your search.</p>';
@@ -45,7 +52,7 @@ function renderCart() {
     $('#cart-count').textContent = String(state.cart.length);
     $('#cart-items').innerHTML = state.cart.length
         ? state.cart
-            .map((i) => `<li>${i.name} <span class="muted">×${i.qty}</span> <b>${money(i.price * i.qty)}</b></li>`)
+            .map((i) => `<li>${escapeHtml(i.name)} <span class="muted">×${i.qty}</span> <b>${money(i.price * i.qty)}</b></li>`)
             .join('')
         : '<li class="muted">Cart is empty.</li>';
     $('#cart-total').textContent = state.cart.length
@@ -130,7 +137,7 @@ $('#checkout-form').addEventListener('submit', (e) => {
 function renderOrders() {
     $('#order-list').innerHTML = state.orders.length
         ? state.orders
-            .map((o) => `<div class="order"><b>${o.id}</b> — ${o.items} · <b>${money(o.total)}</b><br><span class="muted">ship to ${o.name} &lt;${o.email}&gt;</span></div>`)
+            .map((o) => `<div class="order"><b>${o.id}</b> — ${escapeHtml(o.items)} · <b>${money(o.total)}</b><br><span class="muted">ship to ${escapeHtml(o.name)} &lt;${escapeHtml(o.email)}&gt;</span></div>`)
             .join('')
         : '<p class="muted">No orders yet. Checkout to create one.</p>';
 }
