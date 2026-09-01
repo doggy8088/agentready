@@ -55,7 +55,7 @@ AgentReady.js is crafted with modern TypeScript and Bun for high performance and
 - Semantic Engine & Stable Ref Pool (src/semantic.ts): Indexes interactive elements using WeakRef to eliminate memory leaks. Elements are queried via natural language token matching without mutating the original DOM.
 - Dynamic Resynthesis (src/index.ts): Leverages a debounced MutationObserver (\Delta t \approx 100\text{ms}) to detect route transitions in SPAs and re-synthesize available tools on the fly.
 - Shadow DOM Inspector (src/inspector.ts): An isolated UI widget attached via Shadow DOM with closed encapsulation, preventing CSS collisions with host websites while rendering real-time execution logs and safety confirmation dialogs.
-- Strict Testing Suite: Over 43 automated unit tests run with Bun's test runner, combined with full end-to-end Playwright tests on real Chrome.
+- Strict Testing Suite: 53 automated tests (39 unit + 14 E2E) — unit tests on Bun's test runner, end-to-end tests on real Chrome via Playwright.
 
 ---
 
@@ -86,7 +86,7 @@ During testing across Chrome 149+ builds and ChatGPT's in-app browser, we encoun
 $$\text{Token Savings} = 1 - \frac{\text{Tokens}_{\text{WebMCP Tool}}}{\text{Tokens}_{\text{Raw DOM}}} \approx 85\% - 95\%$$
 
 - Zero-Compromise Security: Full proactive redaction of type="password", autocomplete="cc-*", hidden CSRF tokens, and sensitive credential fields ensures agent actions remain transparent and strictly supervised.
-- Lightweight Footprint: The entire runtime bundles into a standalone, minified script under 25 KB with zero third-party dependencies.
+- Lightweight Footprint: The entire runtime bundles into a standalone, minified script of ~36 KB (~12 KB gzipped) with zero third-party dependencies.
 
 ---
 

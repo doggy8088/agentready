@@ -51,9 +51,9 @@ src/
 ├── policy.ts       # Safety classification (allow / confirm / never), credential redaction, token budgets
 ├── inspector.ts    # Shadow DOM user interface badge, activity logger, and human approval modal
 └── tools/          # Core WebMCP tool implementations
-    ├── page.ts     # get_page_context
-    ├── interact.ts # find_on_page, read_target, activate_target
-    ├── forms.ts    # set_field, fill_form, submit_form
+    ├── page.ts     # get_page_context, find_on_page, read_target
+    ├── interact.ts # activate_target, set_field, fill_form, submit_form
+    ├── forms.ts    # one synthesized tool per form (JSON Schema from HTML)
     └── controls.ts # DOM value manipulation helpers
 
 demo/
