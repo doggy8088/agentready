@@ -922,6 +922,38 @@ describe('safety model (plan 004)', () => {
     expect(out.notFound).toContain('Internal');
     expect(doc.querySelector<HTMLInputElement>('#internal')!.value).toBe('');
   });
+
+  it('classifyAction refuses script-URI links, allows ordinary ones', () => {
+    const doc = mount(`
+      <main>
+        <a href="javascript:alert(1)" id="js">Tricky</a>
+        <a href="data:text/html,hi" id="data">Data</a>
+        <a href=" vbscript:msgbox(1)" id="vbs">VBS</a>
+        <a href="/x" id="plain">Next</a>
+        <a href="mailto:s@a.com" id="mail">Mail</a>
+        <a href="#frag" id="frag">Jump</a>
+      </main>`);
+    expect(classifyAction(doc.querySelector('#js')!).level).toBe('never');
+    expect(classifyAction(doc.querySelector('#js')!).reason).toContain('script URI');
+    expect(classifyAction(doc.querySelector('#data')!).level).toBe('never');
+    expect(classifyAction(doc.querySelector('#vbs')!).level).toBe('never');
+    expect(classifyAction(doc.querySelector('#plain')!).level).toBe('allow');
+    expect(classifyAction(doc.querySelector('#mail')!).level).toBe('allow');
+    expect(classifyAction(doc.querySelector('#frag')!).level).toBe('allow');
+  });
+
+  it('activate_target refuses script-URI links without clicking', async () => {
+    const doc = mount('<main><a id="trap" href="javascript:alert(1)">Tricky</a></main>');
+    const link = doc.querySelector('#trap')!;
+    let clicks = 0;
+    link.addEventListener('click', () => clicks++);
+    const runtime = new Runtime();
+    await runtime.register(activateTargetTool(makeEnv(doc)));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: refFor(link) }))) as string;
+    expect(out).toContain('Refused');
+    expect(out).toContain('script URI');
+    expect(clicks).toBe(0);
+  });
 });
 
 describe('config plumbing', () => {

@@ -69,6 +69,10 @@ const DESTRUCTIVE_RE =
 export function classifyAction(el: Element): ActionClass {
   const label = accessibleActionLabel(el);
   const type = (el.getAttribute('type') ?? '').toLowerCase();
+  const href = el.tagName === 'A' ? (el.getAttribute('href') ?? '') : '';
+  if (/^\s*(javascript|data|vbscript):/i.test(href)) {
+    return { level: 'never', reason: 'script URI (never executed by agents)', label };
+  }
   if (DESTRUCTIVE_RE.test(label)) {
     return { level: 'confirm', reason: `consequential action "${label}"`, label };
   }
