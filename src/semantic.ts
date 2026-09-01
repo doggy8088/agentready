@@ -286,7 +286,7 @@ export function matchNodes(
   { kind, limit = 8 }: { kind?: 'action' | 'field'; limit?: number } = {}
 ): SemanticNode[] {
   const q = query.toLowerCase().replace(/[^\w\s$-]/g, ' ');
-  const terms = q.split(/\s+/).filter((t) => t.length > 1);
+  const terms = q.split(/\s+/).filter((t) => t.length > 1 || /^[\w$]$/.test(t));
   if (!terms.length) return [];
   const scored: Array<{ node: SemanticNode; score: number }> = [];
   for (const n of nodes) {

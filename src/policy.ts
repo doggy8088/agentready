@@ -34,8 +34,9 @@ export interface FormClassification {
 export type SubmitPolicy = 'auto-submit' | 'fill-only';
 export type FormControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
+// Boundary-guarded: "auth(?!or)" avoids misfiring on "author"/"authorize"; "cid" matches only as a whole word (e.g. not "decide"/"lucid").
 const SENSITIVE_NAME_RE =
-  /pass(word)?|pwd|secret|token|api[-_]?key|auth|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|cid|security[-_]?code|expiry|exp[-_]?date|cv2/i;
+  /pass(word)?|pwd|secret|token|api[-_]?key|auth(?!or)|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|\bcid\b|security[-_]?code|expiry|exp[-_]?date|cv2/i;
 
 const NEVER_AUTOCOMPLETE = new Set([
   'current-password', 'new-password', 'cc-number', 'cc-cvc', 'cc-csc',
@@ -74,9 +75,6 @@ export function classifyAction(el: Element): ActionClass {
   if (type === 'submit' || el.closest('form')) {
     return { level: 'confirm', reason: `form submission "${label}"`, label };
   }
-  if (type === 'submit' || el.closest('form')) {
-    return { level: 'confirm', reason: `form submission "${label}"`, label };
-  }
   return { level: 'allow', reason: `action "${label}"`, label };
 }
 
@@ -110,7 +108,7 @@ export function classifyForm(form: HTMLFormElement): FormClassification {
   const names = Array.from(form.querySelectorAll('input'))
     .map((f) => f.getAttribute('name') ?? '')
     .join(' ');
-  const searchText = /search|query|filter|find|q\b/i.test(`${action} ${names}`);
+  const searchText = /search|query|filter|find|\bq\b/i.test(`${action} ${names}`);
   const hasSubmit = !!form.querySelector('[type=submit], button:not([type]), button[type=submit]');
 
   let kind: FormKind = 'general';

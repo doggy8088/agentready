@@ -3,7 +3,7 @@
   var MAX_OUTPUT_CHARS = 1500;
   var MAX_DESC_CHARS = 500;
   var MAX_RESULTS = 10;
-  var SENSITIVE_NAME_RE = /pass(word)?|pwd|secret|token|api[-_]?key|auth|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|cid|security[-_]?code|expiry|exp[-_]?date|cv2/i;
+  var SENSITIVE_NAME_RE = /pass(word)?|pwd|secret|token|api[-_]?key|auth(?!or)|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|\bcid\b|security[-_]?code|expiry|exp[-_]?date|cv2/i;
   var NEVER_AUTOCOMPLETE = new Set([
     "current-password",
     "new-password",
@@ -47,9 +47,6 @@
     if (type === "submit" || el.closest("form")) {
       return { level: "confirm", reason: `form submission "${label}"`, label };
     }
-    if (type === "submit" || el.closest("form")) {
-      return { level: "confirm", reason: `form submission "${label}"`, label };
-    }
     return { level: "allow", reason: `action "${label}"`, label };
   }
   function accessibleActionLabel(el) {
@@ -68,7 +65,7 @@
     const method = (form.getAttribute("method") ?? "get").toLowerCase();
     const action = form.getAttribute("action") ?? "";
     const names = Array.from(form.querySelectorAll("input")).map((f) => f.getAttribute("name") ?? "").join(" ");
-    const searchText = /search|query|filter|find|q\b/i.test(`${action} ${names}`);
+    const searchText = /search|query|filter|find|\bq\b/i.test(`${action} ${names}`);
     const hasSubmit = !!form.querySelector("[type=submit], button:not([type]), button[type=submit]");
     let kind = "general";
     let submitPolicy = "fill-only";
@@ -686,7 +683,7 @@
   }
   function matchNodes(query, nodes, { kind, limit = 8 } = {}) {
     const q = query.toLowerCase().replace(/[^\w\s$-]/g, " ");
-    const terms = q.split(/\s+/).filter((t) => t.length > 1);
+    const terms = q.split(/\s+/).filter((t) => t.length > 1 || /^[\w$]$/.test(t));
     if (!terms.length)
       return [];
     const scored = [];
@@ -1003,7 +1000,8 @@
   function findOnPage(env, query, kind) {
     const snapshot = env.discover();
     const narrow = kind === "action" || kind === "field" ? kind : undefined;
-    const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit: MAX_RESULTS });
+    const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
+    const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
     if (!hits.length)
       return `No match for "${query}". Try get_page_context to see what is available.`;
     const results = hits.map((n) => ({

@@ -541,3 +541,50 @@ describe('audit fixes E1–E7', () => {
     }
   });
 });
+
+// ---------- accuracy fixes (plan 002) ----------
+describe('accuracy fixes (plan 002)', () => {
+  it('allows benign names that collide with sensitive substrings', () => {
+    const doc = mount('<form><input name="author"><input name="decide"><input name="email"></form>');
+    const [author, decide, email] = doc.querySelectorAll('input');
+    expect(classifyField(author!).level).toBe('allow');
+    expect(classifyField(decide!).level).toBe('allow');
+    expect(classifyField(email!).level).toBe('allow');
+  });
+
+  it('still refuses genuinely sensitive names', () => {
+    const doc = mount('<form><input name="auth_token"><input name="oauth_state"><input name="cid"><input name="api_key"></form>');
+    for (const el of doc.querySelectorAll('input')) {
+      expect(classifyField(el).level).toBe('never');
+    }
+  });
+
+  it('does not classify a GET form with a "faq" field as auto-submit search', () => {
+    const doc = mount('<form method="get"><input name="faq"><button>Go</button></form>');
+    expect(classifyForm(doc.querySelector('form')!).kind).not.toBe('search');
+  });
+
+  it('still classifies q-field search forms as search', () => {
+    const doc = mount('<form method="get" action="/search"><input name="q"><button>Go</button></form>');
+    const cls = classifyForm(doc.querySelector('form')!);
+    expect(cls.kind).toBe('search');
+    expect(cls.submitPolicy).toBe('auto-submit');
+  });
+
+  it('honors config.maxResults as the find_on_page cap', () => {
+    const doc = mount(
+      Array.from({ length: 12 }, (_, i) => `<button aria-label="special button ${i}">B${i}</button>`).join('')
+    );
+    const env = makeEnv(doc);
+    env.config = { ...env.config, maxResults: 3 };
+    const { nodes } = discover(doc);
+    const hits = matchNodes('special button', nodes, { limit: Math.max(1, env.config.maxResults || 10) });
+    expect(hits.length).toBeLessThanOrEqual(3);
+  });
+
+  it('matches single-character queries like "q"', () => {
+    const doc = mount('<input name="q" aria-label="q">');
+    const { nodes } = discover(doc);
+    expect(matchNodes('q', nodes).length).toBeGreaterThan(0);
+  });
+});

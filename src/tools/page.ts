@@ -86,7 +86,8 @@ function pageContext(env: AgentEnv): string {
 function findOnPage(env: AgentEnv, query: string, kind: string | undefined): string {
   const snapshot = env.discover();
   const narrow = kind === 'action' || kind === 'field' ? kind : undefined;
-  const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit: MAX_RESULTS });
+  const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
+  const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
   if (!hits.length) return `No match for "${query}". Try get_page_context to see what is available.`;
   const results = hits.map((n) => ({
     ref: n.ref,
