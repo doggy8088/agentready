@@ -137,7 +137,7 @@ AgentReady 預設把頁面上的一切——以及 agent 可能做的一切—�
 
 ```js
 window.AgentReadyConfig = {
-  inspector: true,          // 頁面徽章 + 活動紀錄 + 確認對話框
+  inspector: true,          // 頁面徽章 + 活動紀錄 + 確認對話框(false = 需核准的動作一律自動拒絕 — fail-closed)
   siteName: 'My Store',     // 徽章名稱
   maxResults: 8,            // find_on_page 結果上限
 };

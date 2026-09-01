@@ -149,7 +149,7 @@ Configuration:
 
 ```js
 window.AgentReadyConfig = {
-  inspector: true,          // on-page badge + activity + confirm dialogs
+  inspector: true,          // on-page badge + activity + confirm dialogs (false: confirm-gated actions are auto-declined — fail-closed)
   siteName: 'My Store',     // badge label
   maxResults: 8,            // find_on_page result cap
 };

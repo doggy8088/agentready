@@ -1173,7 +1173,7 @@
         ...required.length ? { required } : {}
       },
       annotations: {
-        readOnlyHint: info.submitPolicy === "auto-submit",
+        readOnlyHint: false,
         untrustedContentHint: true
       },
       execute: async (args) => runFormTool(env, info, args)

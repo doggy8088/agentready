@@ -361,6 +361,20 @@ describe('runtime shim + write tools', () => {
     expect(doc2.querySelector<HTMLInputElement>('input[name=q]')!.value).toBe('keyboard');
   });
 
+  it('synthesized tools are honestly annotated as state-changing', async () => {
+    const doc2 = mount(`
+      <form aria-label="Product search" method="get" action="#results">
+        <input name="q" type="search"><button>Search</button>
+      </form>`);
+    const env2 = makeEnv(doc2);
+    const rt = new Runtime();
+    for (const t of synthesizeFormTools(env2)) await rt.register(t);
+    const tools = (await rt.getTools()) as Array<{ name: string; annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean } }>;
+    const search = tools.find((x) => x.name === 'product_search')!;
+    expect(search.annotations!.readOnlyHint).toBe(false);
+    expect(search.annotations!.untrustedContentHint).toBe(true);
+  });
+
   it('getTools returns public metadata only', async () => {
     mountFull();
     await registerWriteTools();

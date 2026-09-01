@@ -140,7 +140,7 @@ function buildTool(env: AgentEnv, info: FormInfo, name: string): ToolDefinition 
       ...(required.length ? { required } : {}),
     },
     annotations: {
-      readOnlyHint: info.submitPolicy === 'auto-submit',
+      readOnlyHint: false,
       untrustedContentHint: true,
     },
     execute: async (args) => runFormTool(env, info, args),
