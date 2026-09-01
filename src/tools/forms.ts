@@ -90,7 +90,7 @@ export function analyzeForm(form: HTMLFormElement): FormInfo | null {
 
 function specFor(f: FormControl): FormFieldSpec {
   const base: FormFieldSpec = {
-    key: f.getAttribute('name') ?? f.id ?? slug(fieldLabel(f)) ?? `field_${Date.now() % 1000}`,
+    key: f.getAttribute('name') || f.id || slug(fieldLabel(f)) || `field_${Date.now() % 1000}`,
     label: fieldLabel(f) || (f.getAttribute('name') ?? (f.getAttribute('type') ?? 'field')),
     el: f,
     type: jsonTypeOf(f),
@@ -163,7 +163,8 @@ async function runFormTool(env: AgentEnv, info: FormInfo, args: Record<string, u
       refused.push(f.key);
       continue;
     }
-    const ok = setControlValue(f.el, raw as string | number | boolean);
+    const target = (f.group && f.group.length ? f.group[0]! : f.el) as FormControl;
+    const ok = setControlValue(target, raw as string | number | boolean);
     env.highlight(f.el);
     filled.push({ field: f.label, value: env.redact(f.el, String(raw)), ok });
     if (!ok) failed.push(f.key);

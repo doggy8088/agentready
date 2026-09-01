@@ -4,6 +4,7 @@
  */
 
 import type { FormControl } from '../policy.js';
+import { escapeCss } from '../semantic.js';
 
 export function setControlValue(el: FormControl, value: string | number | boolean): boolean {
   const tag = el.tagName.toLowerCase();
@@ -12,8 +13,18 @@ export function setControlValue(el: FormControl, value: string | number | boolea
     (el as HTMLInputElement).checked = /true|yes|on|1/i.test(String(value));
   } else if (tag === 'input' && type === 'radio') {
     const input = el as HTMLInputElement;
-    if (input.value === String(value) || radioLabel(input) === String(value)) input.checked = true;
-    else return false;
+    const name = input.getAttribute('name') ?? '';
+    const scope: ParentNode = input.form ?? input.ownerDocument;
+    const group = name
+      ? Array.from(scope.querySelectorAll<HTMLInputElement>(`input[type=radio][name="${escapeCss(input.ownerDocument, name)}"]`))
+      : [input];
+    const member = group.find((r) => r.value === String(value) || radioLabel(r) === String(value));
+    if (!member) return false;
+    member.checked = true;
+    const Ev = member.ownerDocument.defaultView?.Event ?? Event;
+    member.dispatchEvent(new Ev('input', { bubbles: true }));
+    member.dispatchEvent(new Ev('change', { bubbles: true }));
+    return true;
   } else if (tag === 'select') {
     const select = el as HTMLSelectElement;
     const norm = String(value).trim().toLowerCase();

@@ -970,6 +970,78 @@ describe('safety model (plan 004)', () => {
   });
 });
 
+describe('radio group selection (plan 005)', () => {
+  const planPickerForm = `
+    <form aria-label="Plan picker" method="post">
+      <label><input type="radio" name="plan" value="free">Free</label>
+      <label><input type="radio" name="plan" value="pro">Pro</label>
+      <label><input type="radio" name="plan" value="enterprise">Enterprise</label>
+      <button>Save</button>
+    </form>`;
+
+  it('synthesized tool selects every enum option, not just the first', async () => {
+    const doc = mount(planPickerForm);
+    const runtime = new Runtime();
+    for (const t of synthesizeFormTools(makeEnv(doc))) await runtime.register(t);
+    const tools = (await runtime.getTools()) as Array<{
+      name: string;
+      inputSchema?: { properties?: Record<string, { enum?: string[] }> };
+    }>;
+    const schema = tools.find((t) => t.name === 'plan_picker')!.inputSchema!;
+    expect(schema.properties!.plan!.enum).toEqual(['free', 'pro', 'enterprise']);
+    for (const value of ['free', 'pro', 'enterprise']) {
+      const out = JSON.parse(
+        (await runtime.executeTool('plan_picker', JSON.stringify({ plan: value }))) as string
+      ) as { status: string; filled: Array<{ field: string; value: string; ok: boolean }> };
+      expect(out.status).toBe('filled');
+      expect(out.filled[0]!.ok).toBe(true);
+      expect(out.filled[0]!.value).toBe(value);
+      expect(doc.querySelector<HTMLInputElement>(`input[type=radio][value="${value}"]`)!.checked).toBe(true);
+    }
+  });
+
+  it('fill_form sets any radio option by group key', async () => {
+    const doc = mount(planPickerForm);
+    const runtime = new Runtime();
+    await runtime.register(fillFormTool(makeEnv(doc)));
+    const out = JSON.parse(
+      (await runtime.executeTool(
+        'fill_form',
+        JSON.stringify({ ref: refFor(doc.querySelector('input[value=free]')!), values: { plan: 'pro' } })
+      )) as string
+    ) as { filled: Array<{ field: string; status: string }> };
+    expect(out.filled[0]!.status).toBe('set');
+    expect(doc.querySelector<HTMLInputElement>('input[value=pro]')!.checked).toBe(true);
+  });
+
+  it('refuses a value no radio in the group has', () => {
+    const doc = mount(planPickerForm);
+    const radios = Array.from(doc.querySelectorAll<HTMLInputElement>('input[type=radio]'));
+    expect(setControlValue(radios[0]!, 'nonexistent')).toBe(false);
+    expect(radios.every((r) => !r.checked)).toBe(true);
+  });
+
+  it('fires input+change on the member that got checked, not on the passed element', () => {
+    const doc = mount(planPickerForm);
+    const radios = Array.from(doc.querySelectorAll<HTMLInputElement>('input[type=radio]'));
+    const [free, pro] = radios;
+    let freeChanges = 0;
+    let proChanges = 0;
+    free!.addEventListener('change', () => freeChanges++);
+    pro!.addEventListener('change', () => proChanges++);
+    expect(setControlValue(free!, 'pro')).toBe(true);
+    expect(pro!.checked).toBe(true);
+    expect(proChanges).toBe(1);
+    expect(freeChanges).toBe(0);
+  });
+
+  it('falls back to the id when name is empty instead of an empty key', () => {
+    const doc = mount('<form method="post"><input name="" id="em"><button>Go</button></form>');
+    const info = analyzeForm(doc.querySelector('form')!)!;
+    expect(info.fields[0]!.key).toBe('em');
+  });
+});
+
 describe('config plumbing', () => {
   it('caps find_on_page results at config.maxResults end-to-end', async () => {
     const doc = mount(Array.from({ length: 5 }, (_, i) => `<button aria-label="widget button ${i}">W${i}</button>`).join(''));

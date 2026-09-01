@@ -741,10 +741,17 @@
       el.checked = /true|yes|on|1/i.test(String(value));
     } else if (tag === "input" && type === "radio") {
       const input = el;
-      if (input.value === String(value) || radioLabel(input) === String(value))
-        input.checked = true;
-      else
+      const name = input.getAttribute("name") ?? "";
+      const scope = input.form ?? input.ownerDocument;
+      const group = name ? Array.from(scope.querySelectorAll(`input[type=radio][name="${escapeCss(input.ownerDocument, name)}"]`)) : [input];
+      const member = group.find((r) => r.value === String(value) || radioLabel(r) === String(value));
+      if (!member)
         return false;
+      member.checked = true;
+      const Ev2 = member.ownerDocument.defaultView?.Event ?? Event;
+      member.dispatchEvent(new Ev2("input", { bubbles: true }));
+      member.dispatchEvent(new Ev2("change", { bubbles: true }));
+      return true;
     } else if (tag === "select") {
       const select = el;
       const norm = String(value).trim().toLowerCase();
@@ -1124,7 +1131,7 @@
   }
   function specFor(f) {
     const base = {
-      key: f.getAttribute("name") ?? f.id ?? slug(fieldLabel(f)) ?? `field_${Date.now() % 1000}`,
+      key: f.getAttribute("name") || f.id || slug(fieldLabel(f)) || `field_${Date.now() % 1000}`,
       label: fieldLabel(f) || (f.getAttribute("name") ?? (f.getAttribute("type") ?? "field")),
       el: f,
       type: jsonTypeOf(f),
@@ -1197,7 +1204,8 @@
         refused.push(f.key);
         continue;
       }
-      const ok = setControlValue(f.el, raw);
+      const target = f.group && f.group.length ? f.group[0] : f.el;
+      const ok = setControlValue(target, raw);
       env.highlight(f.el);
       filled.push({ field: f.label, value: env.redact(f.el, String(raw)), ok });
       if (!ok)
