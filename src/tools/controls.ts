@@ -16,7 +16,9 @@ export function setControlValue(el: FormControl, value: string | number | boolea
     const name = input.getAttribute('name') ?? '';
     const scope: ParentNode = input.form ?? input.ownerDocument;
     const group = name
-      ? Array.from(scope.querySelectorAll<HTMLInputElement>(`input[type=radio][name="${escapeCss(input.ownerDocument, name)}"]`))
+      ? Array.from(
+          scope.querySelectorAll<HTMLInputElement>(`input[type=radio][name="${escapeCss(input.ownerDocument, name)}"]`),
+        )
       : [input];
     const member = group.find((r) => r.value === String(value) || radioLabel(r) === String(value));
     if (!member) return false;
@@ -29,7 +31,7 @@ export function setControlValue(el: FormControl, value: string | number | boolea
     const select = el as HTMLSelectElement;
     const norm = String(value).trim().toLowerCase();
     const opt = Array.from(select.options).find(
-      (o) => o.value === String(value) || o.textContent.trim().toLowerCase() === norm
+      (o) => o.value === String(value) || o.textContent.trim().toLowerCase() === norm,
     );
     if (!opt) return false;
     select.value = opt.value;

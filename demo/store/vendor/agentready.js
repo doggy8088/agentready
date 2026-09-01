@@ -1,4 +1,167 @@
 (() => {
+  // build/src/inspector.js
+  var STYLES = `
+  :host { all: initial; }
+  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .root { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #101828; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(16,24,40,.25); border: 1px solid #344054; user-select: none; }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #12b76a; }
+  .badge .dot.busy { background: #f79009; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+  .panel { width: 300px; max-height: 320px; overflow: auto; background: #fff; color: #101828; border-radius: 12px; box-shadow: 0 12px 40px rgba(16,24,40,.24); border: 1px solid #eaecf0; font-size: 12px; display: none; }
+  .panel.open { display: block; }
+  .panel header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eaecf0; font-weight: 700; }
+  .panel header span { font-weight: 400; color: #475467; }
+  .feed { padding: 6px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .item { display: flex; gap: 8px; align-items: baseline; }
+  .item .icon { width: 14px; flex: none; text-align: center; }
+  .item .name { font-weight: 600; }
+  .item .args { color: #475467; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+  .item.err .name { color: #d92d20; }
+  .empty { color: #98a2b3; padding: 8px 0; }
+  .confirm { width: 320px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(16,24,40,.35); border: 1px solid #eaecf0; padding: 14px; display: none; }
+  .confirm.open { display: block; }
+  .confirm h4 { margin: 0 0 4px; font-size: 14px; }
+  .confirm p { margin: 0 0 10px; font-size: 12px; color: #475467; }
+  .confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+  button.btn { padding: 6px 14px; border-radius: 8px; border: 1px solid #d0d5dd; background: #fff; font-weight: 600; font-size: 12px; cursor: pointer; }
+  button.btn.primary { background: #12b76a; border-color: #12b76a; color: #fff; }
+  .highlight { position: fixed; pointer-events: none; z-index: 2147483646; border: 2px solid #7f56d9; border-radius: 6px; box-shadow: 0 0 0 4px rgba(127,86,217,.25); transition: all .2s ease; display: none; }
+`;
+
+  class Inspector {
+    constructor({ siteLabel } = {}) {
+      this.gateChain = Promise.resolve();
+      this.pendingGates = 0;
+      this.host = document.createElement("div");
+      this.host.setAttribute("data-agentready-ui", "");
+      this.shadow = this.host.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = STYLES;
+      this.shadow.appendChild(style);
+      this.shadow.innerHTML += `
+      <div class="root">
+        <div class="highlight"></div>
+        <div class="confirm" role="alertdialog" aria-modal="false">
+          <h4></h4><p></p>
+          <div class="row">
+            <button class="btn cancel">Decline</button>
+            <button class="btn primary">Approve</button>
+          </div>
+        </div>
+        <div class="panel">
+          <header>AgentReady <span class="count"></span></header>
+          <div class="feed"><div class="empty">Waiting for agent activity…</div></div>
+        </div>
+        <div class="badge" role="button" tabindex="0">
+          <span class="dot"></span><span class="label">AgentReady</span><span class="badge-count"></span>
+        </div>
+      </div>`;
+      document.documentElement.appendChild(this.host);
+      this.badge = this.shadow.querySelector(".badge");
+      this.dot = this.shadow.querySelector(".dot");
+      this.panel = this.shadow.querySelector(".panel");
+      this.feed = this.shadow.querySelector(".feed");
+      this.countEl = this.shadow.querySelector(".badge-count");
+      this.confirmBox = this.shadow.querySelector(".confirm");
+      this.highlightBox = this.shadow.querySelector(".highlight");
+      this.badge.addEventListener("click", () => this.panel.classList.toggle("open"));
+      this.setLabel(siteLabel ?? "AgentReady");
+    }
+    setLabel(siteLabel) {
+      this.shadow.querySelector(".label").textContent = siteLabel;
+    }
+    setToolCount(n) {
+      this.countEl.textContent = `${n} tool${n === 1 ? "" : "s"}`;
+      this.badge.title = `${n} WebMCP tools available to agents`;
+    }
+    setBusy(busy) {
+      this.dot.classList.toggle("busy", busy);
+    }
+    logActivity(a) {
+      this.feed.querySelector(".empty")?.remove();
+      const icons = { start: "→", done: "✓", error: "✗", submitted: "⏎" };
+      const item = document.createElement("div");
+      item.className = `item${a.phase === "error" ? " err" : ""}`;
+      const argStr = summarizeArgs(a.args);
+      item.innerHTML = '<span class="icon"></span><span><span class="name"></span> <span class="args"></span></span>';
+      item.querySelector(".icon").textContent = icons[a.phase] ?? "·";
+      item.querySelector(".name").textContent = a.tool;
+      item.querySelector(".args").textContent = a.phase === "error" ? `${argStr} — ${a.error ?? ""}` : `${argStr}${a.ms != null ? ` (${a.ms}ms)` : ""}`;
+      this.feed.prepend(item);
+      while (this.feed.children.length > 12)
+        this.feed.lastChild?.remove();
+    }
+    highlight(el, { sticky = false } = {}) {
+      if (!el?.getBoundingClientRect)
+        return;
+      const move = () => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0)
+          return;
+        Object.assign(this.highlightBox.style, {
+          display: "block",
+          left: `${r.left - 4}px`,
+          top: `${r.top - 4}px`,
+          width: `${r.width + 8}px`,
+          height: `${r.height + 8}px`
+        });
+      };
+      move();
+      if (!sticky) {
+        clearTimeout(this._hlTimer);
+        this._hlTimer = setTimeout(() => {
+          this.highlightBox.style.display = "none";
+        }, 1600);
+      }
+    }
+    confirmGate(req) {
+      if (req.level === "allow")
+        return Promise.resolve(true);
+      const start = () => this.runGate(req);
+      const run = this.pendingGates === 0 ? start() : this.gateChain.then(start, start);
+      this.pendingGates++;
+      this.gateChain = run.then(() => {
+        this.pendingGates--;
+      }, () => {
+        this.pendingGates--;
+      });
+      return run;
+    }
+    runGate({ title, detail, el, timeoutMs = 30000 }) {
+      return new Promise((resolve) => {
+        this.setBusy(true);
+        el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        this.confirmBox.querySelector("h4").textContent = title;
+        this.confirmBox.querySelector("p").textContent = detail ?? "";
+        this.confirmBox.style.display = "block";
+        const btnYes = this.confirmBox.querySelector(".primary");
+        const btnNo = this.confirmBox.querySelector(".cancel");
+        const done = (ok) => {
+          this.confirmBox.style.display = "none";
+          this.setBusy(false);
+          clearTimeout(timer);
+          btnYes.removeEventListener("click", yes);
+          btnNo.removeEventListener("click", no);
+          resolve(ok);
+        };
+        const yes = () => done(true);
+        const no = () => done(false);
+        btnYes.addEventListener("click", yes);
+        btnNo.addEventListener("click", no);
+        const timer = setTimeout(() => done(false), timeoutMs);
+      });
+    }
+    destroy() {
+      this.host.remove();
+    }
+  }
+  function summarizeArgs(args) {
+    if (!args || typeof args !== "object")
+      return "";
+    return Object.entries(args).slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)?.slice(0, 40)}`).join(", ");
+  }
+
   // build/src/policy.js
   var MAX_OUTPUT_CHARS = 1500;
   var MAX_DESC_CHARS = 500;
@@ -89,7 +252,7 @@
     const s = typeof text === "string" ? text : JSON.stringify(text) ?? "null";
     if (s.length <= max)
       return s;
-    return s.slice(0, max) + ` …[truncated, ${s.length - max} chars omitted]`;
+    return `${s.slice(0, max)} …[truncated, ${s.length - max} chars omitted]`;
   }
 
   // build/src/runtime.js
@@ -290,169 +453,6 @@
       serialized = String(result);
     }
     return clampOutput(serialized);
-  }
-
-  // build/src/inspector.js
-  var STYLES = `
-  :host { all: initial; }
-  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  .root { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: #101828; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(16,24,40,.25); border: 1px solid #344054; user-select: none; }
-  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #12b76a; }
-  .badge .dot.busy { background: #f79009; animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: .4; } }
-  .panel { width: 300px; max-height: 320px; overflow: auto; background: #fff; color: #101828; border-radius: 12px; box-shadow: 0 12px 40px rgba(16,24,40,.24); border: 1px solid #eaecf0; font-size: 12px; display: none; }
-  .panel.open { display: block; }
-  .panel header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eaecf0; font-weight: 700; }
-  .panel header span { font-weight: 400; color: #475467; }
-  .feed { padding: 6px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
-  .item { display: flex; gap: 8px; align-items: baseline; }
-  .item .icon { width: 14px; flex: none; text-align: center; }
-  .item .name { font-weight: 600; }
-  .item .args { color: #475467; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
-  .item.err .name { color: #d92d20; }
-  .empty { color: #98a2b3; padding: 8px 0; }
-  .confirm { width: 320px; background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(16,24,40,.35); border: 1px solid #eaecf0; padding: 14px; display: none; }
-  .confirm.open { display: block; }
-  .confirm h4 { margin: 0 0 4px; font-size: 14px; }
-  .confirm p { margin: 0 0 10px; font-size: 12px; color: #475467; }
-  .confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
-  button.btn { padding: 6px 14px; border-radius: 8px; border: 1px solid #d0d5dd; background: #fff; font-weight: 600; font-size: 12px; cursor: pointer; }
-  button.btn.primary { background: #12b76a; border-color: #12b76a; color: #fff; }
-  .highlight { position: fixed; pointer-events: none; z-index: 2147483646; border: 2px solid #7f56d9; border-radius: 6px; box-shadow: 0 0 0 4px rgba(127,86,217,.25); transition: all .2s ease; display: none; }
-`;
-
-  class Inspector {
-    constructor({ siteLabel } = {}) {
-      this.gateChain = Promise.resolve();
-      this.pendingGates = 0;
-      this.host = document.createElement("div");
-      this.host.setAttribute("data-agentready-ui", "");
-      this.shadow = this.host.attachShadow({ mode: "open" });
-      const style = document.createElement("style");
-      style.textContent = STYLES;
-      this.shadow.appendChild(style);
-      this.shadow.innerHTML += `
-      <div class="root">
-        <div class="highlight"></div>
-        <div class="confirm" role="alertdialog" aria-modal="false">
-          <h4></h4><p></p>
-          <div class="row">
-            <button class="btn cancel">Decline</button>
-            <button class="btn primary">Approve</button>
-          </div>
-        </div>
-        <div class="panel">
-          <header>AgentReady <span class="count"></span></header>
-          <div class="feed"><div class="empty">Waiting for agent activity…</div></div>
-        </div>
-        <div class="badge" role="button" tabindex="0">
-          <span class="dot"></span><span class="label">AgentReady</span><span class="badge-count"></span>
-        </div>
-      </div>`;
-      document.documentElement.appendChild(this.host);
-      this.badge = this.shadow.querySelector(".badge");
-      this.dot = this.shadow.querySelector(".dot");
-      this.panel = this.shadow.querySelector(".panel");
-      this.feed = this.shadow.querySelector(".feed");
-      this.countEl = this.shadow.querySelector(".badge-count");
-      this.confirmBox = this.shadow.querySelector(".confirm");
-      this.highlightBox = this.shadow.querySelector(".highlight");
-      this.badge.addEventListener("click", () => this.panel.classList.toggle("open"));
-      this.setLabel(siteLabel ?? "AgentReady");
-    }
-    setLabel(siteLabel) {
-      this.shadow.querySelector(".label").textContent = siteLabel;
-    }
-    setToolCount(n) {
-      this.countEl.textContent = `${n} tool${n === 1 ? "" : "s"}`;
-      this.badge.title = `${n} WebMCP tools available to agents`;
-    }
-    setBusy(busy) {
-      this.dot.classList.toggle("busy", busy);
-    }
-    logActivity(a) {
-      this.feed.querySelector(".empty")?.remove();
-      const icons = { start: "→", done: "✓", error: "✗", submitted: "⏎" };
-      const item = document.createElement("div");
-      item.className = "item" + (a.phase === "error" ? " err" : "");
-      const argStr = summarizeArgs(a.args);
-      item.innerHTML = '<span class="icon"></span><span><span class="name"></span> <span class="args"></span></span>';
-      item.querySelector(".icon").textContent = icons[a.phase] ?? "·";
-      item.querySelector(".name").textContent = a.tool;
-      item.querySelector(".args").textContent = a.phase === "error" ? `${argStr} — ${a.error ?? ""}` : `${argStr}${a.ms != null ? ` (${a.ms}ms)` : ""}`;
-      this.feed.prepend(item);
-      while (this.feed.children.length > 12)
-        this.feed.lastChild?.remove();
-    }
-    highlight(el, { sticky = false } = {}) {
-      if (!el?.getBoundingClientRect)
-        return;
-      const move = () => {
-        const r = el.getBoundingClientRect();
-        if (r.width === 0 && r.height === 0)
-          return;
-        Object.assign(this.highlightBox.style, {
-          display: "block",
-          left: `${r.left - 4}px`,
-          top: `${r.top - 4}px`,
-          width: `${r.width + 8}px`,
-          height: `${r.height + 8}px`
-        });
-      };
-      move();
-      if (!sticky) {
-        clearTimeout(this._hlTimer);
-        this._hlTimer = setTimeout(() => {
-          this.highlightBox.style.display = "none";
-        }, 1600);
-      }
-    }
-    confirmGate(req) {
-      if (req.level === "allow")
-        return Promise.resolve(true);
-      const start = () => this.runGate(req);
-      const run = this.pendingGates === 0 ? start() : this.gateChain.then(start, start);
-      this.pendingGates++;
-      this.gateChain = run.then(() => {
-        this.pendingGates--;
-      }, () => {
-        this.pendingGates--;
-      });
-      return run;
-    }
-    runGate({ title, detail, el, timeoutMs = 30000 }) {
-      return new Promise((resolve) => {
-        this.setBusy(true);
-        el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-        this.confirmBox.querySelector("h4").textContent = title;
-        this.confirmBox.querySelector("p").textContent = detail ?? "";
-        this.confirmBox.style.display = "block";
-        const btnYes = this.confirmBox.querySelector(".primary");
-        const btnNo = this.confirmBox.querySelector(".cancel");
-        const done = (ok) => {
-          this.confirmBox.style.display = "none";
-          this.setBusy(false);
-          clearTimeout(timer);
-          btnYes.removeEventListener("click", yes);
-          btnNo.removeEventListener("click", no);
-          resolve(ok);
-        };
-        const yes = () => done(true);
-        const no = () => done(false);
-        btnYes.addEventListener("click", yes);
-        btnNo.addEventListener("click", no);
-        const timer = setTimeout(() => done(false), timeoutMs);
-      });
-    }
-    destroy() {
-      this.host.remove();
-    }
-  }
-  function summarizeArgs(args) {
-    if (!args || typeof args !== "object")
-      return "";
-    return Object.entries(args).slice(0, 3).map(([k, v]) => `${k}: ${JSON.stringify(v)?.slice(0, 40)}`).join(", ");
   }
 
   // build/src/semantic.js
@@ -675,7 +675,7 @@
     if (!wr)
       return null;
     const el = wr.deref();
-    if (!el || !el.isConnected)
+    if (!el?.isConnected)
       return null;
     return el;
   }
@@ -962,111 +962,6 @@
     return "Form submitted after user approval.";
   }
 
-  // build/src/tools/page.js
-  function pageContextTool(env) {
-    return {
-      name: "get_page_context",
-      title: "Page context",
-      description: "Get a semantic summary of the current page: title, headings, regions, " + "available actions overview, and forms. Call this first to orient.",
-      inputSchema: { type: "object", properties: {} },
-      annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: () => pageContext(env)
-    };
-  }
-  function findTool(env) {
-    return {
-      name: "find_on_page",
-      title: "Find on page",
-      description: "Find interactive elements or content on the page by natural-language description. " + "Returns semantic refs usable with read_target / activate_target / set_field. " + 'kind: "any" | "action" (buttons, links, tabs) | "field" (inputs, selects).',
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: 'What to look for, e.g. "Add to cart for MacBook Pro"' },
-          kind: { type: "string", enum: ["any", "action", "field"], description: "Limit result kinds" }
-        },
-        required: ["query"]
-      },
-      annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: ({ query, kind }) => findOnPage(env, String(query ?? ""), kind)
-    };
-  }
-  function readTargetTool(env) {
-    return {
-      name: "read_target",
-      title: "Read target",
-      description: "Read details of one element by semantic ref: current value, options, link target, " + "or surrounding content.",
-      inputSchema: {
-        type: "object",
-        properties: { ref: { type: "string", description: "Ref from find_on_page" } },
-        required: ["ref"]
-      },
-      annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: ({ ref }) => readTarget(env, String(ref ?? ""))
-    };
-  }
-  function pageContext(env) {
-    const snapshot = env.discover();
-    const out = {
-      title: env.doc.title,
-      url: env.doc.URL || env.doc.location?.href || "",
-      headings: snapshot.headings.slice(0, 12).map((h) => `${"#".repeat(h.level)} ${h.text}`),
-      regions: snapshot.landmarks.slice(0, 10).map((l) => `${l.role}: ${l.label}`.trim()),
-      counts: {
-        buttons: snapshot.nodes.filter((n) => n.role === "button").length,
-        links: snapshot.nodes.filter((n) => n.role === "link").length,
-        fields: snapshot.nodes.filter((n) => n.field).length,
-        forms: snapshot.forms.length
-      },
-      forms: snapshot.forms.map((f) => {
-        const info = env.formInfo.get(f);
-        return info ? { form: info.name, fields: info.fields.map((fl) => fl.key).slice(0, 10) } : null;
-      }).filter((x) => x !== null),
-      note: "Use find_on_page to locate elements, then activate_target / set_field / fill_form to act."
-    };
-    return clampOutput(out);
-  }
-  function findOnPage(env, query, kind) {
-    const snapshot = env.discover();
-    const narrow = kind === "action" || kind === "field" ? kind : undefined;
-    const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
-    const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
-    if (!hits.length)
-      return `No match for "${query}". Try get_page_context to see what is available.`;
-    const results = hits.map((n) => ({
-      ref: n.ref,
-      role: n.role,
-      name: n.name,
-      ...n.value ? { value: n.value } : {},
-      context: n.context || undefined,
-      actionRisk: n.action?.level ?? n.field?.level ?? undefined
-    }));
-    return clampOutput({ results });
-  }
-  function readTarget(env, ref) {
-    const el = env.resolveRef(ref);
-    if (!el)
-      return `Ref "${ref}" is stale (element removed or page re-rendered). Run find_on_page again.`;
-    env.highlight(el);
-    const node = env.describe(el);
-    if (node.hiddenFromAgents) {
-      return clampOutput({ ref: node.ref, role: node.role, name: node.name, note: "Sensitive field: values are never exposed to agents." });
-    }
-    const out = { ...node };
-    const tag = el.tagName.toLowerCase();
-    if (tag === "select") {
-      out.options = Array.from(el.options).slice(0, 30).map((o) => ({ value: o.value, label: o.textContent.trim() }));
-    }
-    if (tag === "a")
-      out.href = el.href;
-    if ((tag === "input" || tag === "textarea") && !["checkbox", "radio", "password"].includes(el.type ?? "")) {
-      out.currentValue = env.redact(el, el.value).slice(0, 200);
-    }
-    if (tag === "textarea" || !["INPUT", "SELECT", "BUTTON", "A", "TEXTAREA"].includes(el.tagName)) {
-      out.text = (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 800);
-    }
-    return clampOutput(out);
-  }
-
   // build/src/tools/forms.js
   var MAX_SYNTHESIZED = 8;
   var MAX_OPTIONS_IN_SCHEMA = 24;
@@ -1134,7 +1029,7 @@
   function specFor(f) {
     const base = {
       key: f.getAttribute("name") || f.id || slug(fieldLabel(f)) || `field_${Date.now() % 1000}`,
-      label: fieldLabel(f) || (f.getAttribute("name") ?? (f.getAttribute("type") ?? "field")),
+      label: fieldLabel(f) || (f.getAttribute("name") ?? f.getAttribute("type") ?? "field"),
       el: f,
       type: jsonTypeOf(f),
       required: f.hasAttribute("required") || f.getAttribute("aria-required") === "true",
@@ -1206,7 +1101,7 @@
         refused.push(f.key);
         continue;
       }
-      const target = f.group && f.group.length ? f.group[0] : f.el;
+      const target = f.group?.length ? f.group[0] : f.el;
       const ok = setControlValue(target, raw);
       env.highlight(f.el);
       filled.push({ field: f.label, value: env.redact(f.el, String(raw)), ok });
@@ -1309,6 +1204,116 @@
   }
   function slug(s) {
     return String(s ?? "").toLowerCase().replace(/\.[a-z]+$/, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, MAX_NAME_CHARS);
+  }
+
+  // build/src/tools/page.js
+  function pageContextTool(env) {
+    return {
+      name: "get_page_context",
+      title: "Page context",
+      description: "Get a semantic summary of the current page: title, headings, regions, " + "available actions overview, and forms. Call this first to orient.",
+      inputSchema: { type: "object", properties: {} },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: () => pageContext(env)
+    };
+  }
+  function findTool(env) {
+    return {
+      name: "find_on_page",
+      title: "Find on page",
+      description: "Find interactive elements or content on the page by natural-language description. " + "Returns semantic refs usable with read_target / activate_target / set_field. " + 'kind: "any" | "action" (buttons, links, tabs) | "field" (inputs, selects).',
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: 'What to look for, e.g. "Add to cart for MacBook Pro"' },
+          kind: { type: "string", enum: ["any", "action", "field"], description: "Limit result kinds" }
+        },
+        required: ["query"]
+      },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: ({ query, kind }) => findOnPage(env, String(query ?? ""), kind)
+    };
+  }
+  function readTargetTool(env) {
+    return {
+      name: "read_target",
+      title: "Read target",
+      description: "Read details of one element by semantic ref: current value, options, link target, " + "or surrounding content.",
+      inputSchema: {
+        type: "object",
+        properties: { ref: { type: "string", description: "Ref from find_on_page" } },
+        required: ["ref"]
+      },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      execute: ({ ref }) => readTarget(env, String(ref ?? ""))
+    };
+  }
+  function pageContext(env) {
+    const snapshot = env.discover();
+    const out = {
+      title: env.doc.title,
+      url: env.doc.URL || env.doc.location?.href || "",
+      headings: snapshot.headings.slice(0, 12).map((h) => `${"#".repeat(h.level)} ${h.text}`),
+      regions: snapshot.landmarks.slice(0, 10).map((l) => `${l.role}: ${l.label}`.trim()),
+      counts: {
+        buttons: snapshot.nodes.filter((n) => n.role === "button").length,
+        links: snapshot.nodes.filter((n) => n.role === "link").length,
+        fields: snapshot.nodes.filter((n) => n.field).length,
+        forms: snapshot.forms.length
+      },
+      forms: snapshot.forms.map((f) => {
+        const info = env.formInfo.get(f);
+        return info ? { form: info.name, fields: info.fields.map((fl) => fl.key).slice(0, 10) } : null;
+      }).filter((x) => x !== null),
+      note: "Use find_on_page to locate elements, then activate_target / set_field / fill_form to act."
+    };
+    return clampOutput(out);
+  }
+  function findOnPage(env, query, kind) {
+    const snapshot = env.discover();
+    const narrow = kind === "action" || kind === "field" ? kind : undefined;
+    const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
+    const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
+    if (!hits.length)
+      return `No match for "${query}". Try get_page_context to see what is available.`;
+    const results = hits.map((n) => ({
+      ref: n.ref,
+      role: n.role,
+      name: n.name,
+      ...n.value ? { value: n.value } : {},
+      context: n.context || undefined,
+      actionRisk: n.action?.level ?? n.field?.level ?? undefined
+    }));
+    return clampOutput({ results });
+  }
+  function readTarget(env, ref) {
+    const el = env.resolveRef(ref);
+    if (!el)
+      return `Ref "${ref}" is stale (element removed or page re-rendered). Run find_on_page again.`;
+    env.highlight(el);
+    const node = env.describe(el);
+    if (node.hiddenFromAgents) {
+      return clampOutput({
+        ref: node.ref,
+        role: node.role,
+        name: node.name,
+        note: "Sensitive field: values are never exposed to agents."
+      });
+    }
+    const out = { ...node };
+    const tag = el.tagName.toLowerCase();
+    if (tag === "select") {
+      out.options = Array.from(el.options).slice(0, 30).map((o) => ({ value: o.value, label: o.textContent.trim() }));
+    }
+    if (tag === "a")
+      out.href = el.href;
+    if ((tag === "input" || tag === "textarea") && !["checkbox", "radio", "password"].includes(el.type ?? "")) {
+      out.currentValue = env.redact(el, el.value).slice(0, 200);
+    }
+    if (tag === "textarea" || !["INPUT", "SELECT", "BUTTON", "A", "TEXTAREA"].includes(el.tagName)) {
+      out.text = (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 800);
+    }
+    return clampOutput(out);
   }
 
   // build/src/index.js
@@ -1459,7 +1464,7 @@
       return queue;
     };
   }
-  function exposePublicApi(runtime, env, config) {
+  function exposePublicApi(runtime, env, _config) {
     const api = {
       version: VERSION,
       hasNativeWebMCP: runtime.hasNative,

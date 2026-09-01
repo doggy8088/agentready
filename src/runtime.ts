@@ -7,8 +7,8 @@
  * browsers get the same capabilities.
  */
 
-import { clampOutput, MAX_DESC_CHARS } from './policy.js';
 import type { Activity } from './env.js';
+import { clampOutput, MAX_DESC_CHARS } from './policy.js';
 
 export interface ToolAnnotations {
   readOnlyHint?: boolean;
@@ -45,7 +45,8 @@ function detectNative(): NativeRecord | null {
   if (typeof document === 'undefined') return null;
   const doc = document as Document & { modelContext?: NativeModelContext };
   if (doc.modelContext) return { context: doc.modelContext, kind: 'document' };
-  const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { modelContext?: NativeModelContext }) : null;
+  const nav =
+    typeof navigator !== 'undefined' ? (navigator as Navigator & { modelContext?: NativeModelContext }) : null;
   if (nav?.modelContext) return { context: nav.modelContext, kind: 'navigator' };
   return null;
 }
@@ -203,7 +204,7 @@ export class Runtime {
   async executeTool(
     nameOrTool: string | { name?: string },
     args: string | Record<string, unknown>,
-    opts: { signal?: AbortSignal } = {}
+    opts: { signal?: AbortSignal } = {},
   ): Promise<unknown> {
     const name = typeof nameOrTool === 'string' ? nameOrTool : nameOrTool?.name;
     if (!name) throw new Error(`AgentReady: tool name required`);
@@ -219,7 +220,7 @@ export class Runtime {
         input = parsed as Record<string, unknown>;
       } catch (err) {
         throw new Error(
-          `AgentReady: invalid JSON input for "${name}" — ${err instanceof Error ? err.message : String(err)}`
+          `AgentReady: invalid JSON input for "${name}" — ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     } else {
@@ -296,7 +297,7 @@ function clampResult(result: unknown): unknown {
     return {
       ...response,
       content: response.content.map((part) =>
-        part?.type === 'text' && typeof part.text === 'string' ? { ...part, text: clampOutput(part.text) } : part
+        part?.type === 'text' && typeof part.text === 'string' ? { ...part, text: clampOutput(part.text) } : part,
       ),
     };
   }

@@ -6,17 +6,16 @@
  * AskPage work on any browser.
  */
 
-import { Runtime } from './runtime.js';
-import { Inspector } from './inspector.js';
-import { discover, describeNode, resolveRef, isVisible, cleanText } from './semantic.js';
-import type { Discovery } from './semantic.js';
-import { classifyField, MAX_OUTPUT_CHARS } from './policy.js';
-import { fieldLabel } from './tools/interact.js';
-import { pageContextTool, findTool, readTargetTool } from './tools/page.js';
-import { activateTargetTool, setFieldTool, fillFormTool, submitFormTool } from './tools/interact.js';
-import { synthesizeFormTools } from './tools/forms.js';
-import type { ToolDefinition } from './runtime.js';
 import type { AgentEnv, AgentReadyApi, AgentReadyConfig } from './env.js';
+import { Inspector } from './inspector.js';
+import { classifyField, MAX_OUTPUT_CHARS } from './policy.js';
+import type { ToolDefinition } from './runtime.js';
+import { Runtime } from './runtime.js';
+import type { Discovery } from './semantic.js';
+import { cleanText, describeNode, discover, isVisible, resolveRef } from './semantic.js';
+import { synthesizeFormTools } from './tools/forms.js';
+import { activateTargetTool, fieldLabel, fillFormTool, setFieldTool, submitFormTool } from './tools/interact.js';
+import { findTool, pageContextTool, readTargetTool } from './tools/page.js';
 
 const VERSION = '0.1.0';
 
@@ -45,7 +44,9 @@ async function boot(): Promise<void> {
     ...(window.AgentReadyConfig ?? {}),
   } as AgentReadyConfig;
   if (!window.isSecureContext) {
-    console.warn('[AgentReady] Not a secure context: WebMCP requires HTTPS (or localhost). Tools are still exposed in-page.');
+    console.warn(
+      '[AgentReady] Not a secure context: WebMCP requires HTTPS (or localhost). Tools are still exposed in-page.',
+    );
   }
 
   const inspector = config.inspector ? new Inspector({ siteLabel: config.siteName }) : null;
@@ -80,9 +81,15 @@ async function boot(): Promise<void> {
     subtree: true,
     attributes: true,
     attributeFilter: [
-      'hidden', 'style', 'class',
-      'data-agent-name', 'data-agent-tool', 'data-agent-description',
-      'data-agent-submit', 'data-agent-priority', 'data-agent-hide',
+      'hidden',
+      'style',
+      'class',
+      'data-agent-name',
+      'data-agent-tool',
+      'data-agent-description',
+      'data-agent-submit',
+      'data-agent-priority',
+      'data-agent-hide',
     ],
   });
 
@@ -91,7 +98,7 @@ async function boot(): Promise<void> {
   console.info(
     `[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${
       runtime.hasNative ? `yes (${runtime.nativeTransport})` : 'in-page shim (no transport on this engine)'
-    }`
+    }`,
   );
 }
 
@@ -115,8 +122,7 @@ function createEnv(config: AgentReadyConfig, inspector: Inspector | null): Agent
     labelOf: (el) => fieldLabel(el) || cleanText(el).slice(0, 60),
     redact: (el, value) => (el && classifyField(el).level === 'never' ? '•••••••• (redacted: sensitive field)' : value),
     highlight: (el, opts) => inspector?.highlight(el, opts),
-    confirmGate: (req) =>
-      inspector ? inspector.confirmGate(req) : Promise.resolve(false),
+    confirmGate: (req) => (inspector ? inspector.confirmGate(req) : Promise.resolve(false)),
     onActivity: () => undefined,
   };
   return env;
@@ -148,7 +154,7 @@ async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<Reado
 async function registerFormTools(
   runtime: Runtime,
   env: AgentEnv,
-  reserved: ReadonlySet<string>
+  reserved: ReadonlySet<string>,
 ): Promise<() => Promise<void>> {
   let previousControllers: AbortController[] = [];
 
@@ -196,7 +202,7 @@ async function registerFormTools(
 }
 
 /** Level 2 + agent-facing API: window.AgentReady */
-function exposePublicApi(runtime: Runtime, env: AgentEnv, config: AgentReadyConfig): void {
+function exposePublicApi(runtime: Runtime, env: AgentEnv, _config: AgentReadyConfig): void {
   const api: AgentReadyApi = {
     version: VERSION,
     hasNativeWebMCP: runtime.hasNative,

@@ -7,9 +7,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, type LiveServerMessage, Modality } from '@google/genai';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const OUT = path.join(ROOT, 'video', 'public', 'voiceover');
@@ -100,7 +100,7 @@ async function generateSpeechGemini(text: string, voice: string): Promise<Buffer
       },
     },
     callbacks: {
-      onmessage: (msg: any) => {
+      onmessage: (msg: LiveServerMessage) => {
         if (msg.serverContent?.modelTurn?.parts) {
           for (const part of msg.serverContent.modelTurn.parts) {
             if (part.inlineData?.data) {
@@ -112,7 +112,7 @@ async function generateSpeechGemini(text: string, voice: string): Promise<Buffer
           doneResolver();
         }
       },
-      onerror: (err: any) => {
+      onerror: (err: ErrorEvent) => {
         console.error('Gemini Live API error:', err);
         doneResolver();
       },
@@ -127,7 +127,7 @@ async function generateSpeechGemini(text: string, voice: string): Promise<Buffer
 }
 
 function pcmToM4a(pcmBuffer: Buffer, m4aPath: string): void {
-  const tempPcm = m4aPath + '.pcm';
+  const tempPcm = `${m4aPath}.pcm`;
   writeFileSync(tempPcm, pcmBuffer);
   try {
     execFileSync('ffmpeg', ['-y', '-f', 's16le', '-ar', '24000', '-ac', '1', '-i', tempPcm, m4aPath], {
@@ -148,10 +148,10 @@ function getDurationSeconds(file: string): number {
     const out = execFileSync(
       'ffprobe',
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file],
-      { encoding: 'utf8' }
+      { encoding: 'utf8' },
     );
     const num = Number(out.trim());
-    if (!isNaN(num)) return Math.round(num * 10) / 10;
+    if (!Number.isNaN(num)) return Math.round(num * 10) / 10;
   }
   return 5.0;
 }
@@ -192,7 +192,7 @@ async function main() {
 
     manifestContent = manifestContent.replace(
       /export const NARRATION: Record<string, number> = \{[\s\S]*?\};/,
-      narrationBlock
+      narrationBlock,
     );
     writeFileSync(MANIFEST_PATH, manifestContent);
     console.log(`✅ Updated ${MANIFEST_PATH} with new durations`);

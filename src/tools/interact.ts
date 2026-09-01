@@ -4,11 +4,11 @@
  * "confirm" actions require human approval through the inspector panel.
  */
 
-import { classifyAction, classifyField } from '../policy.js';
-import type { FormControl } from '../policy.js';
-import { setControlValue } from './controls.js';
-import type { ToolDefinition } from '../runtime.js';
 import type { AgentEnv } from '../env.js';
+import type { FormControl } from '../policy.js';
+import { classifyAction, classifyField } from '../policy.js';
+import type { ToolDefinition } from '../runtime.js';
+import { setControlValue } from './controls.js';
 
 export function activateTargetTool(env: AgentEnv): ToolDefinition {
   return {
@@ -109,7 +109,8 @@ function setField(env: AgentEnv, ref: string, value: string): string {
   if (!el) return `Ref "${ref}" is stale. Run find_on_page again.`;
   const cls = classifyField(el);
   if (cls.level === 'never') return `Refused: ${cls.reason}. This field is never exposed to agents.`;
-  if (el.closest('[data-agent-hide]')) return `Refused: field is excluded via data-agent-hide. This field is never exposed to agents.`;
+  if (el.closest('[data-agent-hide]'))
+    return `Refused: field is excluded via data-agent-hide. This field is never exposed to agents.`;
   env.highlight(el, { sticky: true });
   const ok = setControlValue(el as FormControl, value);
   if (!ok) return `Could not set "${env.labelOf(el)}" to ${JSON.stringify(value)} (e.g. select option not found).`;
@@ -147,8 +148,10 @@ function fillForm(env: AgentEnv, ref: string, values: Record<string, unknown>): 
   const form = el.tagName === 'FORM' ? (el as HTMLFormElement) : el.closest('form');
   if (!form) return 'Target is not a form and is not inside one.';
   const fields = Array.from(
-    form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')
-  ).filter((f) => env.isVisible(f) && !f.disabled && f.getAttribute('type') !== 'hidden' && !f.closest('[data-agent-hide]'));
+    form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea'),
+  ).filter(
+    (f) => env.isVisible(f) && !f.disabled && f.getAttribute('type') !== 'hidden' && !f.closest('[data-agent-hide]'),
+  );
 
   const results: Array<{ field: string; status: string; reason?: string; value?: string }> = [];
   const notFound: string[] = [];
@@ -178,11 +181,17 @@ function fillForm(env: AgentEnv, ref: string, values: Record<string, unknown>): 
         f.hasAttribute('required') &&
         f.value === '' &&
         (f as HTMLInputElement).type !== 'checkbox' &&
-        (f as HTMLInputElement).type !== 'radio'
+        (f as HTMLInputElement).type !== 'radio',
     )
     .map((f) => fieldLabel(f) || (f.getAttribute('name') ?? ''));
   const formName =
-    form.getAttribute('aria-label') ?? form.getAttribute('name') ?? ((fields[0] ? fieldLabel(fields[0]!) : '') || 'form');
+    form.getAttribute('aria-label') ??
+    form.getAttribute('name') ??
+    ((fields[0]
+      ? // biome-ignore lint/style/noNonNullAssertion: fields[0] truthiness is checked in this ternary.
+        fieldLabel(fields[0]!)
+      : '') ||
+      'form');
   const out = {
     form: formName,
     filled: results,
@@ -198,7 +207,9 @@ async function submitForm(env: AgentEnv, ref: string, summary: string): Promise<
   if (!el) return `Ref "${ref}" is stale. Run find_on_page again.`;
   const form = el.tagName === 'FORM' ? (el as HTMLFormElement) : el.closest('form');
   if (!form) return 'Target is not inside a form.';
-  const submit = form.querySelector<HTMLInputElement | HTMLButtonElement>('[type=submit], button[type=submit], button:not([type])');
+  const submit = form.querySelector<HTMLInputElement | HTMLButtonElement>(
+    '[type=submit], button[type=submit], button:not([type])',
+  );
   if (!submit) return 'Form has no visible submit control.';
   const ok = await env.confirmGate({
     title: 'Submit form?',

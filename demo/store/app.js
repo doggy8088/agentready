@@ -23,11 +23,7 @@ function money(n) {
     return `$${n.toLocaleString('en-US')}`;
 }
 function escapeHtml(s) {
-    return s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function renderProducts() {
     const q = $('#q').value.trim().toLowerCase();

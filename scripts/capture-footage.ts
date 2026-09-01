@@ -5,8 +5,8 @@
  *   bun scripts/capture-footage.ts
  */
 
-import { chromium } from 'playwright';
 import path from 'node:path';
+import { chromium } from 'playwright';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const OUT = path.join(ROOT, 'video', 'public', 'footage');
@@ -17,7 +17,7 @@ const server = Bun.serve({
     const url = new URL(req.url);
     let p = decodeURIComponent(url.pathname);
     if (p.endsWith('/')) p += 'index.html';
-    const resolved = path.resolve(ROOT, '.' + p);
+    const resolved = path.resolve(ROOT, `.${p}`);
     if (!resolved.startsWith(ROOT)) return new Response('Forbidden', { status: 403 });
     const file = Bun.file(resolved);
     if (!(await file.exists())) return new Response('Not found', { status: 404 });
@@ -37,7 +37,7 @@ interface AR {
 async function record(
   name: string,
   scenario: (page: import('playwright').Page) => Promise<void>,
-  settleMs: number
+  settleMs: number,
 ): Promise<void> {
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
@@ -64,16 +64,19 @@ async function record(
 }
 
 const tool = (page: import('playwright').Page, name: string, args: Record<string, unknown>): Promise<unknown> =>
-  page.evaluate(
-    ([n, a]) => (window as unknown as AR).AgentReady.executeTool(n, JSON.stringify(a)),
-    [name, args] as [string, Record<string, unknown>]
-  );
+  page.evaluate(([n, a]) => (window as unknown as AR).AgentReady.executeTool(n, JSON.stringify(a)), [name, args] as [
+    string,
+    Record<string, unknown>,
+  ]);
 
 const findRef = async (page: import('playwright').Page, query: string, kind?: string): Promise<string> => {
   const raw = JSON.parse((await tool(page, 'find_on_page', { query, kind })) as string) as {
     results: Array<{ ref: string }>;
   };
-  return raw.results[0]!.ref;
+  return (
+    // biome-ignore lint/style/noNonNullAssertion: find_on_page just returned results for this query.
+    raw.results[0]!.ref
+  );
 };
 
 // Clip 1: agent searches the storefront (synthesized tool, results render).
@@ -81,15 +84,16 @@ await record(
   'clip1-search',
   async (page) => {
     await tool(page, 'product_search', { q: 'keyboard', max_price: 150 });
-    await page.waitForFunction(
-      () => document.querySelectorAll('#results .card').length > 0,
-      undefined,
-      { timeout: 5000 }
-    );
-    await page.evaluate(() => document.querySelector('#results')!.scrollIntoView({ block: 'center' }));
+    await page.waitForFunction(() => document.querySelectorAll('#results .card').length > 0, undefined, {
+      timeout: 5000,
+    });
+    await page.evaluate(() => {
+      // biome-ignore lint/style/noNonNullAssertion: the #results container is static markup of the demo store.
+      document.querySelector('#results')!.scrollIntoView({ block: 'center' });
+    });
     await page.waitForTimeout(1800);
   },
-  2000
+  2000,
 );
 
 // Clip 2: add to cart (inspector highlight) → open cart → checkout (approval) → fill → submit (approval) → order.
@@ -123,7 +127,7 @@ await record(
     await submit;
     await page.waitForTimeout(1800);
   },
-  2000
+  2000,
 );
 
 // Clip 3: test page — inspector badge opens live tool list + activity feed.
@@ -140,7 +144,7 @@ await record(
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(600);
   },
-  1500
+  1500,
 );
 
 // Clip 4: SPA — inject a newsletter form, new tool appears in the badge count.
@@ -155,7 +159,7 @@ await record(
     await page.click('#inject-form');
     await page.waitForTimeout(1800);
   },
-  1200
+  1200,
 );
 
 await browser.close();

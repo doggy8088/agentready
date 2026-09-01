@@ -5,8 +5,8 @@
  * Refs stay stable across discovery passes via a WeakMap<Element, id>.
  */
 
-import { classifyAction, classifyField } from './policy.js';
 import type { ActionClass, FieldClass } from './policy.js';
+import { classifyAction, classifyField } from './policy.js';
 
 let refCounter = 0;
 const elToRef = new WeakMap<Element, string>();
@@ -218,10 +218,24 @@ export function describeNode(el: Element, doc: Document = el.ownerDocument): Sem
 }
 
 const INTERACTIVE_SELECTOR = [
-  'a[href]', 'button', 'input', 'select', 'textarea', 'summary',
-  '[role=button]', '[role=link]', '[role=tab]', '[role=checkbox]', '[role=switch]',
-  '[role=menuitem]', '[role=option]', '[role=combobox]', '[role=searchbox]', '[role=textbox]',
-  '[onclick]', '[tabindex]:not([tabindex="-1"])',
+  'a[href]',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'summary',
+  '[role=button]',
+  '[role=link]',
+  '[role=tab]',
+  '[role=checkbox]',
+  '[role=switch]',
+  '[role=menuitem]',
+  '[role=option]',
+  '[role=combobox]',
+  '[role=searchbox]',
+  '[role=textbox]',
+  '[onclick]',
+  '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
 const LANDMARK_SELECTOR =
@@ -241,7 +255,7 @@ export function resolveRef(ref: string): Element | null {
   const wr = refToEl.get(ref);
   if (!wr) return null;
   const el = wr.deref();
-  if (!el || !el.isConnected) return null;
+  if (!el?.isConnected) return null;
   return el;
 }
 
@@ -275,7 +289,7 @@ export function discover(doc: Document): Discovery {
     .map((h) => ({ level: Number(h.tagName.slice(1)), text: cleanText(h).slice(0, 120) }));
 
   const forms = Array.from(root.querySelectorAll('form')).filter(
-    (f) => isVisible(f) && !f.closest('[data-agentready-ignore]')
+    (f) => isVisible(f) && !f.closest('[data-agentready-ignore]'),
   );
   return { nodes, landmarks, headings, forms, title: doc.title, url: doc.URL };
 }
@@ -284,7 +298,7 @@ export function discover(doc: Document): Discovery {
 export function matchNodes(
   query: string,
   nodes: SemanticNode[],
-  { kind, limit = 8 }: { kind?: 'action' | 'field'; limit?: number } = {}
+  { kind, limit = 8 }: { kind?: 'action' | 'field'; limit?: number } = {},
 ): SemanticNode[] {
   const q = query.toLowerCase().replace(/[^\w\s$-]/g, ' ');
   const terms = q.split(/\s+/).filter((t) => t.length > 1 || /^[\w$]$/.test(t));
@@ -293,7 +307,8 @@ export function matchNodes(
   for (const n of nodes) {
     if (n.hiddenFromAgents) continue;
     if (kind === 'action' && !['button', 'link', 'tab', 'menuitem'].includes(n.role)) continue;
-    if (kind === 'field' && !['textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'slider'].includes(n.role)) continue;
+    if (kind === 'field' && !['textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'slider'].includes(n.role))
+      continue;
     let score = 0;
     const nameL = n.name.toLowerCase();
     const ctxL = (n.context ?? '').toLowerCase();

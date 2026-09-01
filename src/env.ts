@@ -1,5 +1,5 @@
-import type { Discovery, SemanticNode } from './semantic.js';
 import type { FieldClass, FormKind } from './policy.js';
+import type { Discovery, SemanticNode } from './semantic.js';
 
 export type SubmitPolicy = 'auto-submit' | 'fill-only';
 
@@ -52,7 +52,11 @@ export interface AgentReadyApi {
   version: string;
   hasNativeWebMCP: boolean;
   getTools(): Promise<unknown[]>;
-  executeTool(name: string, argsJson: string | Record<string, unknown>, opts?: { signal?: AbortSignal }): Promise<unknown>;
+  executeTool(
+    name: string,
+    argsJson: string | Record<string, unknown>,
+    opts?: { signal?: AbortSignal },
+  ): Promise<unknown>;
   register(def: unknown): Promise<string>;
   unregisterAll(): void;
   inspect(): Discovery;

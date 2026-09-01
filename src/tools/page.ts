@@ -3,10 +3,10 @@
  * All read-only, all outputs marked untrustedContentHint.
  */
 
-import { clampOutput, MAX_RESULTS } from '../policy.js';
-import { matchNodes } from '../semantic.js';
-import type { ToolDefinition } from '../runtime.js';
 import type { AgentEnv, FormInfo } from '../env.js';
+import { clampOutput, MAX_RESULTS } from '../policy.js';
+import type { ToolDefinition } from '../runtime.js';
+import { matchNodes } from '../semantic.js';
 
 export function pageContextTool(env: AgentEnv): ToolDefinition {
   return {
@@ -47,8 +47,7 @@ export function readTargetTool(env: AgentEnv): ToolDefinition {
     name: 'read_target',
     title: 'Read target',
     description:
-      'Read details of one element by semantic ref: current value, options, link target, ' +
-      'or surrounding content.',
+      'Read details of one element by semantic ref: current value, options, link target, ' + 'or surrounding content.',
     inputSchema: {
       type: 'object',
       properties: { ref: { type: 'string', description: 'Ref from find_on_page' } },
@@ -106,7 +105,12 @@ function readTarget(env: AgentEnv, ref: string): string {
   env.highlight(el);
   const node = env.describe(el);
   if (node.hiddenFromAgents) {
-    return clampOutput({ ref: node.ref, role: node.role, name: node.name, note: 'Sensitive field: values are never exposed to agents.' });
+    return clampOutput({
+      ref: node.ref,
+      role: node.role,
+      name: node.name,
+      note: 'Sensitive field: values are never exposed to agents.',
+    });
   }
   const out: Record<string, unknown> = { ...node };
   const tag = el.tagName.toLowerCase();
@@ -116,7 +120,10 @@ function readTarget(env: AgentEnv, ref: string): string {
       .map((o) => ({ value: o.value, label: o.textContent.trim() }));
   }
   if (tag === 'a') out.href = (el as HTMLAnchorElement).href;
-  if ((tag === 'input' || tag === 'textarea') && !['checkbox', 'radio', 'password'].includes((el as HTMLInputElement).type ?? '')) {
+  if (
+    (tag === 'input' || tag === 'textarea') &&
+    !['checkbox', 'radio', 'password'].includes((el as HTMLInputElement).type ?? '')
+  ) {
     out.currentValue = env.redact(el, (el as HTMLInputElement).value).slice(0, 200);
   }
   if (tag === 'textarea' || !['INPUT', 'SELECT', 'BUTTON', 'A', 'TEXTAREA'].includes(el.tagName)) {

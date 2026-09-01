@@ -24,7 +24,7 @@ export function resolveUnderRoot(root: string, rawPathname: string): { pathname:
     return null; // malformed percent-encoding → reject
   }
   if (pathname.endsWith('/')) pathname += 'index.html';
-  const resolved = path.resolve(root, '.' + pathname);
+  const resolved = path.resolve(root, `.${pathname}`);
   if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
   return { pathname, resolved };
 }

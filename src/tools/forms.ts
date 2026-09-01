@@ -5,13 +5,13 @@
  * attributes override name/description/submit behavior.
  */
 
-import { classifyField, classifyForm } from '../policy.js';
-import type { FormControl } from '../policy.js';
-import { setControlValue } from './controls.js';
-import { escapeCss } from '../semantic.js';
-import { fieldLabel } from './interact.js';
-import type { ToolDefinition } from '../runtime.js';
 import type { AgentEnv, FormFieldSpec, FormInfo } from '../env.js';
+import type { FormControl } from '../policy.js';
+import { classifyField, classifyForm } from '../policy.js';
+import type { ToolDefinition } from '../runtime.js';
+import { escapeCss } from '../semantic.js';
+import { setControlValue } from './controls.js';
+import { fieldLabel } from './interact.js';
 
 const MAX_SYNTHESIZED = 8;
 const MAX_OPTIONS_IN_SCHEMA = 24;
@@ -50,8 +50,7 @@ export function analyzeForm(form: HTMLFormElement): FormInfo | null {
     headingNear(form) ??
     (cls.kind === 'search'
       ? 'search'
-      : slug(form.getAttribute('action') ?? '') ||
-        `form_${slug(fieldLabel(cls.fields[0] ?? form) || 'form')}`);
+      : slug(form.getAttribute('action') ?? '') || `form_${slug(fieldLabel(cls.fields[0] ?? form) || 'form')}`);
   const name = slug(rawName) || 'form';
 
   const fields: FormFieldSpec[] = [];
@@ -73,9 +72,7 @@ export function analyzeForm(form: HTMLFormElement): FormInfo | null {
   if (!fields.length) return null;
 
   const descOverride = form.getAttribute('data-agent-description');
-  const description = (
-    descOverride ?? defaultDesc(cls.kind, name, fields)
-  ).slice(0, 460);
+  const description = (descOverride ?? defaultDesc(cls.kind, name, fields)).slice(0, 460);
 
   return {
     name,
@@ -91,7 +88,7 @@ export function analyzeForm(form: HTMLFormElement): FormInfo | null {
 function specFor(f: FormControl): FormFieldSpec {
   const base: FormFieldSpec = {
     key: f.getAttribute('name') || f.id || slug(fieldLabel(f)) || `field_${Date.now() % 1000}`,
-    label: fieldLabel(f) || (f.getAttribute('name') ?? (f.getAttribute('type') ?? 'field')),
+    label: fieldLabel(f) || (f.getAttribute('name') ?? f.getAttribute('type') ?? 'field'),
     el: f,
     type: jsonTypeOf(f),
     required: f.hasAttribute('required') || f.getAttribute('aria-required') === 'true',
@@ -163,7 +160,9 @@ async function runFormTool(env: AgentEnv, info: FormInfo, args: Record<string, u
       refused.push(f.key);
       continue;
     }
-    const target = (f.group && f.group.length ? f.group[0]! : f.el) as FormControl;
+    const target =
+      // biome-ignore lint/style/noNonNullAssertion: the preceding length guard ensures group[0] exists.
+      (f.group?.length ? f.group[0]! : f.el) as FormControl;
     const ok = setControlValue(target, raw as string | number | boolean);
     env.highlight(f.el);
     filled.push({ field: f.label, value: env.redact(f.el, String(raw)), ok });
@@ -175,7 +174,9 @@ async function runFormTool(env: AgentEnv, info: FormInfo, args: Record<string, u
   }
 
   if (info.submitPolicy === 'auto-submit' && !failed.length) {
-    const submit = form.querySelector<HTMLInputElement | HTMLButtonElement>('[type=submit], button[type=submit], button:not([type])');
+    const submit = form.querySelector<HTMLInputElement | HTMLButtonElement>(
+      '[type=submit], button[type=submit], button:not([type])',
+    );
     env.highlight(submit ?? form, { sticky: true });
     if (form.requestSubmit && submit) form.requestSubmit(submit);
     else if (submit) submit.click();
@@ -213,7 +214,9 @@ function selectEnum(f: HTMLSelectElement): string[] | undefined {
 function radioField(form: HTMLFormElement, radio: HTMLInputElement): FormFieldSpec {
   const name = radio.getAttribute('name') ?? '';
   const group = name
-    ? Array.from(form.querySelectorAll<HTMLInputElement>(`input[type=radio][name="${escapeCss(form.ownerDocument, name)}"]`))
+    ? Array.from(
+        form.querySelectorAll<HTMLInputElement>(`input[type=radio][name="${escapeCss(form.ownerDocument, name)}"]`),
+      )
     : [radio];
   return {
     key: name || slug(fieldLabel(radio)) || 'choice',
@@ -255,16 +258,16 @@ function headingNear(form: HTMLFormElement): string {
 }
 
 function defaultDesc(kind: string, name: string, fields: FormFieldSpec[]): string {
-  const fl = fields.map((f) => f.label).slice(0, 8).join(', ');
+  const fl = fields
+    .map((f) => f.label)
+    .slice(0, 8)
+    .join(', ');
   if (kind === 'search') return `Search: fill the search fields (${fl}) and run the search.`;
   if (kind === 'newsletter') return 'Subscribe with an email address. Fills the form; never submits.';
   return `Fill the "${name}" form. Fields: ${fl}.`;
 }
 
-function submitPolicyOf(
-  form: HTMLFormElement,
-  cls: ReturnType<typeof classifyForm>
-): FormInfo['submitPolicy'] {
+function submitPolicyOf(form: HTMLFormElement, cls: ReturnType<typeof classifyForm>): FormInfo['submitPolicy'] {
   const override = (form.getAttribute('data-agent-submit') ?? '').toLowerCase();
   if (['auto', 'auto-submit'].includes(override)) return 'auto-submit';
   if (override === 'never' || override === 'confirm') return 'fill-only';

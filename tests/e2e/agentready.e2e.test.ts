@@ -4,9 +4,9 @@
  * synthesized tools end-to-end, SPA re-synthesis and the demo store flow.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext, Page } from 'playwright';
-import { startServer, launchBrowser, agent, TEST_PAGE, STORE_PAGE } from './helpers.js';
+import { agent, launchBrowser, STORE_PAGE, startServer, TEST_PAGE } from './helpers.js';
 
 let server: { baseUrl: string; stop(): void };
 let browser: Browser;
@@ -41,7 +41,7 @@ function waitForAgentReady(timeout = 10000): Promise<unknown> {
   return page.waitForFunction(
     () => (window as unknown as { AgentReady?: unknown }).AgentReady !== undefined,
     undefined,
-    { timeout }
+    { timeout },
   );
 }
 
@@ -49,7 +49,7 @@ function waitForText(selector: string, text: string, timeout = 5000): Promise<un
   return page.waitForFunction(
     ([sel, expected]) => document.querySelector(sel)?.textContent?.includes(expected) ?? false,
     [selector, text] as [string, string],
-    { timeout }
+    { timeout },
   );
 }
 
@@ -78,8 +78,16 @@ describe('boot + registration', () => {
     expect(await agent.version(page)).toMatch(/^\d+\.\d+\.\d+$/);
     const names = await agent.getToolNames(page);
     for (const t of [
-      'get_page_context', 'find_on_page', 'read_target', 'activate_target',
-      'set_field', 'fill_form', 'submit_form', 'search_products', 'signup_form', 'preferences_form',
+      'get_page_context',
+      'find_on_page',
+      'read_target',
+      'activate_target',
+      'set_field',
+      'fill_form',
+      'submit_form',
+      'search_products',
+      'signup_form',
+      'preferences_form',
     ]) {
       expect(names).toContain(t);
     }
@@ -129,7 +137,7 @@ describe('write tools + human-in-the-loop', () => {
     const boxRef = await findRef('email notifications', 'field');
     await agent.executeTool(page, 'set_field', { ref: boxRef, value: 'true' });
     const checked = await page.evaluate(
-      () => (document.querySelector('#prefs-form input[type=checkbox]') as HTMLInputElement | null)?.checked ?? false
+      () => (document.querySelector('#prefs-form input[type=checkbox]') as HTMLInputElement | null)?.checked ?? false,
     );
     expect(checked).toBe(true);
     const count = Number((await page.locator('#event-count').textContent()) ?? '0');
@@ -141,13 +149,18 @@ describe('write tools + human-in-the-loop', () => {
     const out = JSON.parse(
       (await agent.executeTool(page, 'fill_form', {
         ref,
-        values: { 'Full name': 'E2E Tester', Email: 'e2e@test.dev', Password: 'super-secret', 'Card number': '4242424242424242' },
-      })) as string
+        values: {
+          'Full name': 'E2E Tester',
+          Email: 'e2e@test.dev',
+          Password: 'super-secret',
+          'Card number': '4242424242424242',
+        },
+      })) as string,
     ) as { filled: Array<{ field: string; status: string }> };
     const statuses = Object.fromEntries(out.filled.map((f) => [f.field, f.status]));
     expect(statuses['Full name']).toBe('set');
-    expect(statuses['Email']).toBe('set');
-    expect(statuses['Password']).toBe('refused');
+    expect(statuses.Email).toBe('set');
+    expect(statuses.Password).toBe('refused');
     expect(statuses['Card number']).toBe('refused');
     const serialized = JSON.stringify(out);
     expect(serialized).not.toContain('super-secret');
@@ -186,7 +199,11 @@ describe('write tools + human-in-the-loop', () => {
 describe('synthesized tools + SPA updates', () => {
   it('search_products fills and auto-submits the search form', async () => {
     const out = JSON.parse(
-      (await agent.executeTool(page, 'search_products', { q: 'mech', category: 'Keyboards', max_price: 500 })) as string
+      (await agent.executeTool(page, 'search_products', {
+        q: 'mech',
+        category: 'Keyboards',
+        max_price: 500,
+      })) as string,
     ) as { status: string };
     expect(out.status).toBe('submitted');
     await waitForText('#results', 'Search executed');
@@ -200,7 +217,7 @@ describe('synthesized tools + SPA updates', () => {
         return ar ? ar.getTools().then((ts) => ts.some((t) => t.name === 'newsletter_subscription')) : false;
       },
       undefined,
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
   }, 30000);
 
@@ -217,7 +234,10 @@ describe('synthesized tools + SPA updates', () => {
 
   it('find_on_page never surfaces data-agent-hide fields', async () => {
     // Positive control: a visible labelled field is findable.
-    const control = (await agent.executeTool(page, 'find_on_page', { query: 'email notifications', kind: 'field' })) as string;
+    const control = (await agent.executeTool(page, 'find_on_page', {
+      query: 'email notifications',
+      kind: 'field',
+    })) as string;
     expect(control).not.toContain('No match');
     // The data-agent-hide field (aria-labelled, non-sensitive name) must be invisible to agents.
     const out = (await agent.executeTool(page, 'find_on_page', { query: 'internal note' })) as string;
@@ -237,14 +257,12 @@ describe('synthesized tools + SPA updates', () => {
         return ar.getTools().then((ts) => {
           const names = ts.map((t) => t.name);
           return (
-            names.includes('newsletter_subscription') &&
-            new Set(names).size === names.length &&
-            names.length === 15
+            names.includes('newsletter_subscription') && new Set(names).size === names.length && names.length === 15
           );
         });
       },
       undefined,
-      { timeout: 10000 }
+      { timeout: 10000 },
     );
   }, 30000);
 });
@@ -257,27 +275,27 @@ describe('demo store flow', () => {
 
     // 1. Synthesized product_search drives the storefront.
     const searchOut = JSON.parse(
-      (await agent.executeTool(page, 'product_search', { q: 'keyboard', max_price: 150 })) as string
+      (await agent.executeTool(page, 'product_search', { q: 'keyboard', max_price: 150 })) as string,
     ) as { status: string };
     expect(searchOut.status).toBe('submitted');
 
     // 2. Add the top keyboard to the cart (allow-level: no dialog).
     const addRef = await findRef('Add MechKeyboard Pro to cart', 'action');
     await agent.executeTool(page, 'activate_target', { ref: addRef });
-    await page.waitForFunction(
-      () => document.querySelector('#cart-count')?.textContent?.trim() === '1',
-      undefined,
-      { timeout: 5000 }
-    );
+    await page.waitForFunction(() => document.querySelector('#cart-count')?.textContent?.trim() === '1', undefined, {
+      timeout: 5000,
+    });
 
     // 3. Open the cart, then go to checkout (confirm-level: dialog).
     await agent.executeTool(page, 'activate_target', { ref: await findRef('open cart', 'action') });
-    const checkout = approve(agent.executeTool(page, 'activate_target', { ref: await findRef('go to checkout', 'action') }));
+    const checkout = approve(
+      agent.executeTool(page, 'activate_target', { ref: await findRef('go to checkout', 'action') }),
+    );
     expect(await checkout).toContain('Activated');
     await page.waitForFunction(
       () => (document.querySelector('#view-checkout') as HTMLElement | null)?.hidden === false,
       undefined,
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     // 4. Fill the checkout form; sensitive fields are refused.
@@ -291,7 +309,7 @@ describe('demo store flow', () => {
           'Shipping address': '1 Test Way',
           'Card number': '4242424242424242',
         },
-      })) as string
+      })) as string,
     ) as { filled: Array<{ field: string; status: string }>; stillRequired?: string[] };
     expect(fillOut.filled.find((f) => f.status === 'refused')?.field).toBe('Card number');
     expect(fillOut.stillRequired ?? []).toEqual([]);

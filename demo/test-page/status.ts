@@ -24,8 +24,11 @@ function wire(): void {
   // 1. Search form renders results client-side (synthesized tool auto-submits this).
   document.querySelector<HTMLFormElement>('#search-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    // biome-ignore lint/style/noNonNullAssertion: the q input is part of the static test page markup.
     const q = document.querySelector<HTMLInputElement>('input[name=q]')!.value.trim();
+    // biome-ignore lint/style/noNonNullAssertion: the category select is part of the static test page markup.
     const cat = document.querySelector<HTMLSelectElement>('select[name=category]')!.value;
+    // biome-ignore lint/style/noNonNullAssertion: the max-price input is part of the static test page markup.
     const max = document.querySelector<HTMLInputElement>('input[name=max_price]')!.value;
     $('#results').innerHTML = q
       ? `<span class="ok">Search executed:</span> keyword=<b>${escapeHtml(q)}</b>, category=<b>${escapeHtml(cat)}</b>, max=<b>${escapeHtml(max || 'any')}</b>`
@@ -36,9 +39,12 @@ function wire(): void {
   // 2. Signup form echoes submitted fields — used to prove sensitive fields never reach it.
   document.querySelector<HTMLFormElement>('#signup-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
+    // biome-ignore lint/style/noNonNullAssertion: the signup form is part of the static test page markup.
     const form = document.querySelector<HTMLFormElement>('#signup-form')!;
     const parts: string[] = [];
-    new FormData(form).forEach((v, k) => parts.push(`${k}=${escapeHtml(String(v))}`));
+    new FormData(form).forEach((v, k) => {
+      parts.push(`${k}=${escapeHtml(String(v))}`);
+    });
     $('#signup-log').innerHTML = `<span class="ok">Submitted:</span> ${parts.join(', ') || '(empty)'}`;
     log(`signup submitted: ${parts.join(', ')}`);
   });
@@ -99,11 +105,7 @@ function log(msg: string): void {
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 wire();

@@ -73,7 +73,7 @@ if (isMarkdown) {
     const status = s.maxRawBytes && s.rawBytes > s.maxRawBytes ? '❌ OVER BUDGET' : '✅ OK';
     console.log(`  ${s.name.padEnd(20)} | Raw: ${rawFmt} | Gzip: ${gzipFmt} | ${status} ${budgetFmt}`);
   }
-  console.log('─'.repeat(60) + '\n');
+  console.log(`${'─'.repeat(60)}\n`);
 }
 
 // Exit non-zero if over budget

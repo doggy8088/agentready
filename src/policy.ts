@@ -39,8 +39,16 @@ const SENSITIVE_NAME_RE =
   /pass(word)?|pwd|secret|token|api[-_]?key|auth(?!or)|authorization|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|\bcid\b|security[-_]?code|expiry|exp[-_]?date|cv2/i;
 
 const NEVER_AUTOCOMPLETE = new Set([
-  'current-password', 'new-password', 'cc-number', 'cc-cvc', 'cc-csc',
-  'cc-exp', 'cc-exp-month', 'cc-exp-year', 'cc-name', 'cc-type',
+  'current-password',
+  'new-password',
+  'cc-number',
+  'cc-cvc',
+  'cc-csc',
+  'cc-exp',
+  'cc-exp-month',
+  'cc-exp-year',
+  'cc-name',
+  'cc-type',
 ]);
 
 /** Classify a form control. Returns { level, reason }. */
@@ -100,7 +108,7 @@ function textOf(el: Element): string {
 /** Classify a form to decide submit policy and synthesized tool shape. */
 export function classifyForm(form: HTMLFormElement): FormClassification {
   const fields: FormControl[] = Array.from(
-    form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')
+    form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea'),
   );
   const hasPassword = fields.some((f) => (f.getAttribute('type') ?? '').toLowerCase() === 'password');
   const hasPayment = fields.some((f) => {
@@ -130,7 +138,7 @@ export function classifyForm(form: HTMLFormElement): FormClassification {
 
 /** Truncate tool output to budget. */
 export function clampOutput(text: unknown, max: number = MAX_OUTPUT_CHARS): string {
-  const s = typeof text === 'string' ? text : JSON.stringify(text) ?? 'null';
+  const s = typeof text === 'string' ? text : (JSON.stringify(text) ?? 'null');
   if (s.length <= max) return s;
-  return s.slice(0, max) + ` …[truncated, ${s.length - max} chars omitted]`;
+  return `${s.slice(0, max)} …[truncated, ${s.length - max} chars omitted]`;
 }

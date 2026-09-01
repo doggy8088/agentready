@@ -48,15 +48,15 @@ export const agent = {
     return page.evaluate(() => (window as unknown as AgentReadyWindow).AgentReady?.version ?? '');
   },
   async getToolNames(page: Page): Promise<string[]> {
-    const tools = (await page.evaluate(() =>
-      (window as unknown as AgentReadyWindow).AgentReady?.getTools() ?? []
+    const tools = (await page.evaluate(
+      () => (window as unknown as AgentReadyWindow).AgentReady?.getTools() ?? [],
     )) as Array<{ name: string }>;
     return tools.map((t) => t.name);
   },
   executeTool(page: Page, name: string, args: Record<string, unknown>): Promise<unknown> {
     return page.evaluate(
       ([n, a]) => (window as unknown as AgentReadyWindow).AgentReady!.executeTool(n, JSON.stringify(a)),
-      [name, args] as [string, Record<string, unknown>]
+      [name, args] as [string, Record<string, unknown>],
     );
   },
 };

@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, it } from 'bun:test';
 import { Window } from 'happy-dom';
-import { classifyAction, classifyField, classifyForm, clampOutput, MAX_OUTPUT_CHARS } from '../src/policy.js';
-import { discover, matchNodes, refFor, resolveRef, describeNode, escapeCss } from '../src/semantic.js';
-import type { Discovery } from '../src/semantic.js';
-import { analyzeForm, synthesizeFormTools } from '../src/tools/forms.js';
-import { setControlValue } from '../src/tools/controls.js';
-import { Runtime } from '../src/runtime.js';
 import type { AgentEnv } from '../src/env.js';
-import { pageContextTool, findTool, readTargetTool } from '../src/tools/page.js';
-import { activateTargetTool, fillFormTool, setFieldTool } from '../src/tools/interact.js';
 import { Inspector } from '../src/inspector.js';
+import { clampOutput, classifyAction, classifyField, classifyForm, MAX_OUTPUT_CHARS } from '../src/policy.js';
+import { Runtime } from '../src/runtime.js';
+import type { Discovery } from '../src/semantic.js';
+import { describeNode, discover, escapeCss, matchNodes, refFor, resolveRef } from '../src/semantic.js';
+import { setControlValue } from '../src/tools/controls.js';
+import { analyzeForm, synthesizeFormTools } from '../src/tools/forms.js';
+import { activateTargetTool, fillFormTool, setFieldTool } from '../src/tools/interact.js';
+import { findTool, pageContextTool, readTargetTool } from '../src/tools/page.js';
 
 let document: Document;
 
@@ -50,7 +50,7 @@ function makeEnv(doc: Document, { approve = true } = {}): AgentEnv {
 describe('policy.classifyField', () => {
   it('never-exposes password, payment and token-like fields', () => {
     const doc = mount(
-      '<form><input type="password" name="pw"><input name="card_number" autocomplete="cc-number"><input type="hidden" name="csrf" value="tok"></form>'
+      '<form><input type="password" name="pw"><input name="card_number" autocomplete="cc-number"><input type="hidden" name="csrf" value="tok"></form>',
     );
     const inputs = doc.querySelectorAll('input');
     expect(classifyField(inputs[0]!).level).toBe('never');
@@ -80,7 +80,9 @@ describe('policy.classifyForm', () => {
   });
 
   it('password forms are fill-only auth', () => {
-    const doc = mount('<form method="post" action="/login"><input type="password" name="pw"><input name="user"></form>');
+    const doc = mount(
+      '<form method="post" action="/login"><input type="password" name="pw"><input name="user"></form>',
+    );
     const cls = classifyForm(doc.querySelector('form')!);
     expect(cls.kind).toBe('auth');
     expect(cls.submitPolicy).toBe('fill-only');
@@ -93,7 +95,7 @@ describe('policy.classifyForm', () => {
 
   it('data-agent-submit overrides the policy', () => {
     const doc = mount(
-      '<form method="get" action="/search" data-agent-submit="never"><input name="q" type="search"><button>Go</button></form>'
+      '<form method="get" action="/search" data-agent-submit="never"><input name="q" type="search"><button>Go</button></form>',
     );
     const info = analyzeForm(doc.querySelector('form')!)!;
     expect(info.submitPolicy).toBe('fill-only');
@@ -176,7 +178,7 @@ describe('semantic discovery + matching', () => {
 describe('setControlValue', () => {
   it('sets select by label text and fires events', () => {
     const doc = mount(
-      '<form><select name="size"><option value="s">Small</option><option value="l">Large</option></select></form>'
+      '<form><select name="size"><option value="s">Small</option><option value="l">Large</option></select></form>',
     );
     const sel = doc.querySelector('select')!;
     let changed = 0;
@@ -197,7 +199,9 @@ describe('setControlValue', () => {
   });
 
   it('sets radios by value', () => {
-    const doc = mount('<form><input type="radio" name="size" value="s"><input type="radio" name="size" value="m"></form>');
+    const doc = mount(
+      '<form><input type="radio" name="size" value="s"><input type="radio" name="size" value="m"></form>',
+    );
     const radios = doc.querySelectorAll('input');
     expect(setControlValue(radios[1]!, 'm')).toBe(true);
     expect(radios[1]!.checked).toBe(true);
@@ -307,8 +311,8 @@ describe('runtime shim + write tools', () => {
         JSON.stringify({
           ref: formNode.ref,
           values: { 'Name on card': 'Will Tang', Email: 'a@b.c', 'Card number': '4242424242424242' },
-        })
-      )) as string
+        }),
+      )) as string,
     ) as { filled: Array<{ field: string; status: string; value?: string }> };
     const refused = out.filled.find((f) => f.status === 'refused')!;
     expect(refused.field).toBe('Card number');
@@ -330,7 +334,7 @@ describe('runtime shim + write tools', () => {
     const node = env.discover().nodes.find((n) => n.tag === 'input')!;
     const res = (await runtime.executeTool(
       'submit_form',
-      JSON.stringify({ ref: node.ref, summary: 'Place order' })
+      JSON.stringify({ ref: node.ref, summary: 'Place order' }),
     )) as string;
     expect(res).toContain('declined');
   });
@@ -341,7 +345,7 @@ describe('runtime shim + write tools', () => {
     const node = env.discover().nodes.find((n) => n.tag === 'input')!;
     const res = (await runtime.executeTool(
       'submit_form',
-      JSON.stringify({ ref: node.ref, summary: 'Place order' })
+      JSON.stringify({ ref: node.ref, summary: 'Place order' }),
     )) as string;
     expect(res).toContain('submitted after user approval');
   });
@@ -356,7 +360,9 @@ describe('runtime shim + write tools', () => {
     for (const t of synthesizeFormTools(env2)) await rt.register(t);
     const names = ((await rt.getTools()) as Array<{ name: string }>).map((t) => t.name);
     expect(names).toContain('product_search');
-    const out = JSON.parse((await rt.executeTool('product_search', JSON.stringify({ q: 'keyboard', max_price: 150 }))) as string);
+    const out = JSON.parse(
+      (await rt.executeTool('product_search', JSON.stringify({ q: 'keyboard', max_price: 150 }))) as string,
+    );
     expect(out.status).toBe('submitted');
     expect(doc2.querySelector<HTMLInputElement>('input[name=q]')!.value).toBe('keyboard');
   });
@@ -369,7 +375,10 @@ describe('runtime shim + write tools', () => {
     const env2 = makeEnv(doc2);
     const rt = new Runtime();
     for (const t of synthesizeFormTools(env2)) await rt.register(t);
-    const tools = (await rt.getTools()) as Array<{ name: string; annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean } }>;
+    const tools = (await rt.getTools()) as Array<{
+      name: string;
+      annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
+    }>;
     const search = tools.find((x) => x.name === 'product_search')!;
     expect(search.annotations!.readOnlyHint).toBe(false);
     expect(search.annotations!.untrustedContentHint).toBe(true);
@@ -378,7 +387,11 @@ describe('runtime shim + write tools', () => {
   it('getTools returns public metadata only', async () => {
     mountFull();
     await registerWriteTools();
-    const tools = (await runtime.getTools()) as Array<{ name: string; inputSchema?: { required?: string[] }; execute?: unknown }>;
+    const tools = (await runtime.getTools()) as Array<{
+      name: string;
+      inputSchema?: { required?: string[] };
+      execute?: unknown;
+    }>;
     const t = tools.find((x) => x.name === 'set_field')!;
     expect(t.inputSchema!.required).toEqual(['ref', 'value']);
     expect(t.execute).toBeUndefined();
@@ -460,7 +473,7 @@ describe('audit fixes E1–E7', () => {
     const aborted = new AbortController();
     aborted.abort();
     await expect(
-      rt.register({ name: 'x', description: 'd', execute: () => 1 }, { signal: aborted.signal })
+      rt.register({ name: 'x', description: 'd', execute: () => 1 }, { signal: aborted.signal }),
     ).rejects.toThrow(/already aborted/);
     const good = new AbortController();
     await rt.register({ name: 'x2', description: 'd', execute: () => 1 }, { signal: good.signal });
@@ -491,7 +504,11 @@ describe('audit fixes E1–E7', () => {
 
   it('E5: executeTool accepts object args, rejects primitives, allows arrays (WPT parity)', async () => {
     const rt = new Runtime();
-    await rt.register({ name: 'probe', description: 'd', execute: (args) => Array.isArray(args) ? 'array' : 'object' });
+    await rt.register({
+      name: 'probe',
+      description: 'd',
+      execute: (args) => (Array.isArray(args) ? 'array' : 'object'),
+    });
     await expect(rt.executeTool('probe', { a: 1 })).resolves.toBe('object');
     await expect(rt.executeTool('probe', '{"a":1}')).resolves.toBe('object');
     await expect(rt.executeTool('probe', '[1,2,3]')).resolves.toBe('array');
@@ -562,7 +579,9 @@ describe('audit fixes E1–E7', () => {
 // ---------- accuracy fixes (plan 002) ----------
 describe('accuracy fixes (plan 002)', () => {
   it('allows benign names that collide with sensitive substrings', () => {
-    const doc = mount('<form><input name="author"><input name="authorize"><input name="decide"><input name="email"></form>');
+    const doc = mount(
+      '<form><input name="author"><input name="authorize"><input name="decide"><input name="email"></form>',
+    );
     const [author, authorize, decide, email] = doc.querySelectorAll('input');
     expect(classifyField(author!).level).toBe('allow');
     expect(classifyField(authorize!).level).toBe('allow');
@@ -571,7 +590,9 @@ describe('accuracy fixes (plan 002)', () => {
   });
 
   it('still refuses genuinely sensitive names', () => {
-    const doc = mount('<form><input name="auth_token"><input name="oauth_state"><input name="authorization_code"><input name="cid"><input name="api_key"></form>');
+    const doc = mount(
+      '<form><input name="auth_token"><input name="oauth_state"><input name="authorization_code"><input name="cid"><input name="api_key"></form>',
+    );
     for (const el of doc.querySelectorAll('input')) {
       expect(classifyField(el).level).toBe('never');
     }
@@ -591,7 +612,7 @@ describe('accuracy fixes (plan 002)', () => {
 
   it('honors config.maxResults as the find_on_page cap', () => {
     const doc = mount(
-      Array.from({ length: 12 }, (_, i) => `<button aria-label="special button ${i}">B${i}</button>`).join('')
+      Array.from({ length: 12 }, (_, i) => `<button aria-label="special button ${i}">B${i}</button>`).join(''),
     );
     const env = makeEnv(doc);
     env.config = { ...env.config, maxResults: 3 };
@@ -650,7 +671,9 @@ describe('read tools (characterization)', () => {
   it('find_on_page returns refs with actionRisk for destructive actions', async () => {
     const doc = mountShop();
     const runtime = await registerReadTools(makeEnv(doc));
-    const out = JSON.parse((await runtime.executeTool('find_on_page', JSON.stringify({ query: 'Delete account' }))) as string) as {
+    const out = JSON.parse(
+      (await runtime.executeTool('find_on_page', JSON.stringify({ query: 'Delete account' }))) as string,
+    ) as {
       results: Array<{ ref: string; role: string; name: string; actionRisk: string }>;
     };
     expect(out.results.length).toBeGreaterThan(0);
@@ -672,7 +695,10 @@ describe('read tools (characterization)', () => {
     const doc = mountShop();
     const runtime = await registerReadTools(makeEnv(doc));
     const out = JSON.parse(
-      (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('select')!) }))) as string
+      (await runtime.executeTool(
+        'read_target',
+        JSON.stringify({ ref: refFor(doc.querySelector('select')!) }),
+      )) as string,
     ) as { options: Array<{ value: string; label: string }> };
     expect(out.options).toEqual([
       { value: 's', label: 'Small' },
@@ -683,7 +709,10 @@ describe('read tools (characterization)', () => {
   it('read_target never exposes sensitive field values', async () => {
     const doc = mountShop();
     const runtime = await registerReadTools(makeEnv(doc));
-    const raw = (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('input[type=password]')!) }))) as string;
+    const raw = (await runtime.executeTool(
+      'read_target',
+      JSON.stringify({ ref: refFor(doc.querySelector('input[type=password]')!) }),
+    )) as string;
     expect(raw).not.toContain('hunter2');
     const out = JSON.parse(raw) as Record<string, unknown>;
     expect(String(out.note)).toContain('Sensitive field');
@@ -697,7 +726,10 @@ describe('read tools (characterization)', () => {
         <label for="internal">Internal note</label><input id="internal" name="internal" data-agent-hide value="inner-secret">
       </form></main>`);
     const runtime = await registerReadTools(makeEnv(doc));
-    const raw = (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('#internal')!) }))) as string;
+    const raw = (await runtime.executeTool(
+      'read_target',
+      JSON.stringify({ ref: refFor(doc.querySelector('#internal')!) }),
+    )) as string;
     expect(raw).not.toContain('inner-secret');
     const out = JSON.parse(raw) as Record<string, unknown>;
     expect(String(out.note)).toContain('Sensitive field');
@@ -763,7 +795,12 @@ describe('activate_target gate (characterization)', () => {
 describe('inspector confirmGate (characterization)', () => {
   const withInspector = async (
     html: string,
-    run: (ctx: { el: HTMLElement; inspector: Inspector; shadow: ShadowRoot; confirmBox: HTMLElement }) => Promise<void> | void
+    run: (ctx: {
+      el: HTMLElement;
+      inspector: Inspector;
+      shadow: ShadowRoot;
+      confirmBox: HTMLElement;
+    }) => Promise<void> | void,
   ): Promise<void> => {
     const doc = mount(html);
     (globalThis as unknown as { document?: Document }).document = doc;
@@ -790,95 +827,113 @@ describe('inspector confirmGate (characterization)', () => {
   });
 
   it('default-level gate shows the dialog and resolves true on approve', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const p = inspector.confirmGate({ title: 'Approve me?', detail: 'Please review.', el });
-      expect(confirmBox.style.display).toBe('block');
-      expect(confirmBox.querySelector('h4')!.textContent).toBe('Approve me?');
-      shadow.querySelector<HTMLButtonElement>('.primary')!.click();
-      await expect(p).resolves.toBe(true);
-      expect(confirmBox.style.display).toBe('none');
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const p = inspector.confirmGate({ title: 'Approve me?', detail: 'Please review.', el });
+        expect(confirmBox.style.display).toBe('block');
+        expect(confirmBox.querySelector('h4')!.textContent).toBe('Approve me?');
+        shadow.querySelector<HTMLButtonElement>('.primary')!.click();
+        await expect(p).resolves.toBe(true);
+        expect(confirmBox.style.display).toBe('none');
+      },
+    );
   });
 
   it('fresh gate invocation resolves false on decline and hides the box', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const p = inspector.confirmGate({ title: 'T', detail: 'D', el });
-      expect(confirmBox.style.display).toBe('block');
-      shadow.querySelector<HTMLButtonElement>('.cancel')!.click();
-      await expect(p).resolves.toBe(false);
-      expect(confirmBox.style.display).toBe('none');
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const p = inspector.confirmGate({ title: 'T', detail: 'D', el });
+        expect(confirmBox.style.display).toBe('block');
+        shadow.querySelector<HTMLButtonElement>('.cancel')!.click();
+        await expect(p).resolves.toBe(false);
+        expect(confirmBox.style.display).toBe('none');
+      },
+    );
   });
 
   it('gate times out to false without any click', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const p = inspector.confirmGate({ title: 'T', detail: 'D', level: 'confirm', el, timeoutMs: 10 });
-      expect(confirmBox.style.display).toBe('block');
-      await new Promise((r) => setTimeout(r, 50));
-      await expect(p).resolves.toBe(false);
-      expect(confirmBox.style.display).toBe('none');
-      expect(shadow.querySelector<HTMLElement>('.dot')!.classList.contains('busy')).toBe(false);
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const p = inspector.confirmGate({ title: 'T', detail: 'D', level: 'confirm', el, timeoutMs: 10 });
+        expect(confirmBox.style.display).toBe('block');
+        await new Promise((r) => setTimeout(r, 50));
+        await expect(p).resolves.toBe(false);
+        expect(confirmBox.style.display).toBe('none');
+        expect(shadow.querySelector<HTMLElement>('.dot')!.classList.contains('busy')).toBe(false);
+      },
+    );
   });
 
   it('cleans up listeners: a second gate still works after the first resolves', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
-      const first = inspector.confirmGate({ title: 'First', detail: 'D', level: 'confirm', el });
-      cancel.click();
-      await expect(first).resolves.toBe(false);
-      expect(confirmBox.style.display).toBe('none');
-      cancel.click(); // stray click on the resolved gate must be a no-op
-      const second = inspector.confirmGate({ title: 'Second', detail: 'D', level: 'confirm', el });
-      expect(confirmBox.style.display).toBe('block');
-      cancel.click();
-      await expect(second).resolves.toBe(false);
-      expect(confirmBox.style.display).toBe('none');
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
+        const first = inspector.confirmGate({ title: 'First', detail: 'D', level: 'confirm', el });
+        cancel.click();
+        await expect(first).resolves.toBe(false);
+        expect(confirmBox.style.display).toBe('none');
+        cancel.click(); // stray click on the resolved gate must be a no-op
+        const second = inspector.confirmGate({ title: 'Second', detail: 'D', level: 'confirm', el });
+        expect(confirmBox.style.display).toBe('block');
+        cancel.click();
+        await expect(second).resolves.toBe(false);
+        expect(confirmBox.style.display).toBe('none');
+      },
+    );
   });
 
   it('serializes concurrent gates: one approve click resolves exactly one request', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
-      const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
-      const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
-      expect(confirmBox.querySelector('h4')!.textContent).toBe('First request');
-      primary.click();
-      await expect(first).resolves.toBe(true);
-      let secondSettled = false;
-      void second.then(() => {
-        secondSettled = true;
-      });
-      await new Promise((r) => setTimeout(r, 20)); // the queued gate starts once the first settles
-      expect(secondSettled).toBe(false);
-      expect(confirmBox.style.display).toBe('block');
-      expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
-      primary.click();
-      await expect(second).resolves.toBe(true);
-      expect(confirmBox.style.display).toBe('none');
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
+        const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
+        const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
+        expect(confirmBox.querySelector('h4')!.textContent).toBe('First request');
+        primary.click();
+        await expect(first).resolves.toBe(true);
+        let secondSettled = false;
+        void second.then(() => {
+          secondSettled = true;
+        });
+        await new Promise((r) => setTimeout(r, 20)); // the queued gate starts once the first settles
+        expect(secondSettled).toBe(false);
+        expect(confirmBox.style.display).toBe('block');
+        expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
+        primary.click();
+        await expect(second).resolves.toBe(true);
+        expect(confirmBox.style.display).toBe('none');
+      },
+    );
   });
 
   it('declining the first concurrent gate leaves the second pending until its own click', async () => {
-    await withInspector('<main><button id="gate-target">Go</button></main>', async ({ el, inspector, shadow, confirmBox }) => {
-      const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
-      const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
-      const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
-      const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
-      cancel.click();
-      await expect(first).resolves.toBe(false);
-      let secondSettled = false;
-      void second.then(() => {
-        secondSettled = true;
-      });
-      await new Promise((r) => setTimeout(r, 20));
-      expect(secondSettled).toBe(false);
-      expect(confirmBox.style.display).toBe('block');
-      expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
-      primary.click();
-      await expect(second).resolves.toBe(true);
-      expect(confirmBox.style.display).toBe('none');
-    });
+    await withInspector(
+      '<main><button id="gate-target">Go</button></main>',
+      async ({ el, inspector, shadow, confirmBox }) => {
+        const primary = shadow.querySelector<HTMLButtonElement>('.primary')!;
+        const cancel = shadow.querySelector<HTMLButtonElement>('.cancel')!;
+        const first = inspector.confirmGate({ title: 'First request', detail: 'D', level: 'confirm', el });
+        const second = inspector.confirmGate({ title: 'Second request', detail: 'D', level: 'confirm', el });
+        cancel.click();
+        await expect(first).resolves.toBe(false);
+        let secondSettled = false;
+        void second.then(() => {
+          secondSettled = true;
+        });
+        await new Promise((r) => setTimeout(r, 20));
+        expect(secondSettled).toBe(false);
+        expect(confirmBox.style.display).toBe('block');
+        expect(confirmBox.querySelector('h4')!.textContent).toBe('Second request');
+        primary.click();
+        await expect(second).resolves.toBe(true);
+        expect(confirmBox.style.display).toBe('none');
+      },
+    );
   });
 });
 
@@ -911,7 +966,7 @@ describe('safety model (plan 004)', () => {
     await runtime.register(setFieldTool(makeEnv(doc)));
     const res = (await runtime.executeTool(
       'set_field',
-      JSON.stringify({ ref: refFor(doc.querySelector('#internal')!), value: 'x' })
+      JSON.stringify({ ref: refFor(doc.querySelector('#internal')!), value: 'x' }),
     )) as string;
     expect(res).toContain('Refused:');
     expect(res).toContain('data-agent-hide');
@@ -929,8 +984,8 @@ describe('safety model (plan 004)', () => {
     const out = JSON.parse(
       (await runtime.executeTool(
         'fill_form',
-        JSON.stringify({ ref: refFor(doc.querySelector('#nm')!), values: { Name: 'Will', Internal: 'sneaky' } })
-      )) as string
+        JSON.stringify({ ref: refFor(doc.querySelector('#nm')!), values: { Name: 'Will', Internal: 'sneaky' } }),
+      )) as string,
     ) as { filled: Array<{ field: string; status: string }>; notFound?: string[] };
     expect(out.filled.find((f) => f.field === 'Name')!.status).toBe('set');
     expect(out.notFound).toContain('Internal');
@@ -990,9 +1045,10 @@ describe('radio group selection (plan 005)', () => {
     const schema = tools.find((t) => t.name === 'plan_picker')!.inputSchema!;
     expect(schema.properties!.plan!.enum).toEqual(['free', 'pro', 'enterprise']);
     for (const value of ['free', 'pro', 'enterprise']) {
-      const out = JSON.parse(
-        (await runtime.executeTool('plan_picker', JSON.stringify({ plan: value }))) as string
-      ) as { status: string; filled: Array<{ field: string; value: string; ok: boolean }> };
+      const out = JSON.parse((await runtime.executeTool('plan_picker', JSON.stringify({ plan: value }))) as string) as {
+        status: string;
+        filled: Array<{ field: string; value: string; ok: boolean }>;
+      };
       expect(out.status).toBe('filled');
       expect(out.filled[0]!.ok).toBe(true);
       expect(out.filled[0]!.value).toBe(value);
@@ -1007,8 +1063,8 @@ describe('radio group selection (plan 005)', () => {
     const out = JSON.parse(
       (await runtime.executeTool(
         'fill_form',
-        JSON.stringify({ ref: refFor(doc.querySelector('input[value=free]')!), values: { plan: 'pro' } })
-      )) as string
+        JSON.stringify({ ref: refFor(doc.querySelector('input[value=free]')!), values: { plan: 'pro' } }),
+      )) as string,
     ) as { filled: Array<{ field: string; status: string }> };
     expect(out.filled[0]!.status).toBe('set');
     expect(doc.querySelector<HTMLInputElement>('input[value=pro]')!.checked).toBe(true);
@@ -1044,12 +1100,16 @@ describe('radio group selection (plan 005)', () => {
 
 describe('config plumbing', () => {
   it('caps find_on_page results at config.maxResults end-to-end', async () => {
-    const doc = mount(Array.from({ length: 5 }, (_, i) => `<button aria-label="widget button ${i}">W${i}</button>`).join(''));
+    const doc = mount(
+      Array.from({ length: 5 }, (_, i) => `<button aria-label="widget button ${i}">W${i}</button>`).join(''),
+    );
     const env = makeEnv(doc);
     env.config.maxResults = 2;
     const runtime = new Runtime();
     await runtime.register(findTool(env));
-    const out = JSON.parse((await runtime.executeTool('find_on_page', JSON.stringify({ query: 'widget button' }))) as string) as {
+    const out = JSON.parse(
+      (await runtime.executeTool('find_on_page', JSON.stringify({ query: 'widget button' }))) as string,
+    ) as {
       results: unknown[];
     };
     expect(out.results.length).toBeGreaterThan(0);

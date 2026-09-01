@@ -108,7 +108,7 @@ export class Inspector {
     this.feed.querySelector('.empty')?.remove();
     const icons: Record<Activity['phase'], string> = { start: '→', done: '✓', error: '✗', submitted: '⏎' };
     const item = document.createElement('div');
-    item.className = 'item' + (a.phase === 'error' ? ' err' : '');
+    item.className = `item${a.phase === 'error' ? ' err' : ''}`;
     const argStr = summarizeArgs(a.args);
     item.innerHTML = '<span class="icon"></span><span><span class="name"></span> <span class="args"></span></span>';
     (item.querySelector('.icon') as HTMLElement).textContent = icons[a.phase] ?? '·';
@@ -156,7 +156,7 @@ export class Inspector {
       },
       () => {
         this.pendingGates--;
-      }
+      },
     );
     return run;
   }
