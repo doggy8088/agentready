@@ -1069,3 +1069,35 @@ describe('config plumbing', () => {
     }
   });
 });
+
+// ---------- registration lifecycle (plan 007) ----------
+
+describe('registration lifecycle (plan 007)', () => {
+  it('reserves core tool names against synthesized collisions', () => {
+    const doc = mount('<form data-agent-name="find_on_page"><input name="q"><button>Go</button></form>');
+    const env = makeEnv(doc);
+    expect(synthesizeFormTools(env)[0]!.name).toBe('find_on_page');
+    expect(synthesizeFormTools(env, new Set(['find_on_page']))[0]!.name).toBe('find_on_page_2');
+  });
+
+  it('degrades circular results to a summary instead of erroring after side effects', async () => {
+    const runtime = new Runtime();
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    await runtime.register({
+      name: 'echo_circular',
+      description: 'returns a circular object',
+      execute: () => circular,
+    });
+    const out = await runtime.executeTool('echo_circular', '{}');
+    expect(typeof out).toBe('string');
+  });
+
+  it('duplicate register of the same name keeps the last definition (public API semantics)', async () => {
+    const runtime = new Runtime();
+    await runtime.register({ name: 'dup_tool', description: 'first', execute: () => 'first' });
+    await runtime.register({ name: 'dup_tool', description: 'second', execute: () => 'second' });
+    expect((await runtime.getTools()).length).toBe(1);
+    expect(String(await runtime.executeTool('dup_tool', '{}'))).toBe('second');
+  });
+});

@@ -223,6 +223,30 @@ describe('synthesized tools + SPA updates', () => {
     const out = (await agent.executeTool(page, 'find_on_page', { query: 'internal note' })) as string;
     expect(out).toContain('No match');
   }, 30000);
+
+  it('survives a rapid mutation storm without duplicate or leaked batches', async () => {
+    // 5 rapid injections (1 form was already injected by the test above):
+    // 6 newsletter forms + 3 page forms = 9, but MAX_SYNTHESIZED caps each
+    // batch at 8 form tools, so the 6th newsletter form gets none.
+    // Expected settled state: 7 core + 8 form tools = 15 unique names.
+    for (let i = 0; i < 5; i++) await page.click('#inject-form');
+    await page.waitForFunction(
+      () => {
+        const ar = (window as unknown as { AgentReady?: { getTools(): Promise<Array<{ name: string }>> } }).AgentReady;
+        if (!ar) return false;
+        return ar.getTools().then((ts) => {
+          const names = ts.map((t) => t.name);
+          return (
+            names.includes('newsletter_subscription') &&
+            new Set(names).size === names.length &&
+            names.length === 15
+          );
+        });
+      },
+      undefined,
+      { timeout: 10000 }
+    );
+  }, 30000);
 });
 
 describe('demo store flow', () => {
