@@ -8,7 +8,7 @@ import { setControlValue } from '../src/tools/controls.js';
 import { Runtime } from '../src/runtime.js';
 import type { AgentEnv } from '../src/env.js';
 import { pageContextTool, findTool, readTargetTool } from '../src/tools/page.js';
-import { activateTargetTool } from '../src/tools/interact.js';
+import { activateTargetTool, fillFormTool, setFieldTool } from '../src/tools/interact.js';
 import { Inspector } from '../src/inspector.js';
 
 let document: Document;
@@ -676,6 +676,20 @@ describe('read tools (characterization)', () => {
     expect('currentValue' in out).toBe(false);
     expect('value' in out).toBe(false);
   });
+
+  it('read_target returns the sensitive note for data-agent-hide fields', async () => {
+    const doc = mount(`
+      <main><form aria-label="Notes">
+        <label for="internal">Internal note</label><input id="internal" name="internal" data-agent-hide value="inner-secret">
+      </form></main>`);
+    const runtime = await registerReadTools(makeEnv(doc));
+    const raw = (await runtime.executeTool('read_target', JSON.stringify({ ref: refFor(doc.querySelector('#internal')!) }))) as string;
+    expect(raw).not.toContain('inner-secret');
+    const out = JSON.parse(raw) as Record<string, unknown>;
+    expect(String(out.note)).toContain('Sensitive field');
+    expect('currentValue' in out).toBe(false);
+    expect('value' in out).toBe(false);
+  });
 });
 
 describe('activate_target gate (characterization)', () => {
@@ -807,6 +821,62 @@ describe('inspector confirmGate (characterization)', () => {
       await expect(second).resolves.toBe(false);
       expect(confirmBox.style.display).toBe('none');
     });
+  });
+});
+
+// ---------- safety model enforcement (plan 004) ----------
+
+describe('safety model (plan 004)', () => {
+  it('discovery excludes sensitive and data-agent-hide fields from the public snapshot', () => {
+    const doc = mount(`
+      <main>
+        <form aria-label="Profile">
+          <label for="pw">Password</label><input id="pw" name="pw" type="password" value="hunter2">
+          <label for="internal">Internal</label><input id="internal" name="internal" data-agent-hide value="inner-secret">
+          <label for="nm">Name</label><input id="nm" name="nm">
+        </form>
+      </main>`);
+    const { nodes } = discover(doc);
+    expect(nodes.length).toBe(1);
+    expect(nodes[0]!.name).toBe('Name');
+    const serialized = JSON.stringify(nodes);
+    expect(serialized).not.toContain('inner-secret');
+    expect(serialized).not.toContain('internal');
+  });
+
+  it('set_field refuses data-agent-hide fields', async () => {
+    const doc = mount(`
+      <main><form aria-label="Profile">
+        <label for="internal">Internal</label><input id="internal" name="internal" data-agent-hide>
+      </form></main>`);
+    const runtime = new Runtime();
+    await runtime.register(setFieldTool(makeEnv(doc)));
+    const res = (await runtime.executeTool(
+      'set_field',
+      JSON.stringify({ ref: refFor(doc.querySelector('#internal')!), value: 'x' })
+    )) as string;
+    expect(res).toContain('Refused:');
+    expect(res).toContain('data-agent-hide');
+    expect(doc.querySelector<HTMLInputElement>('#internal')!.value).toBe('');
+  });
+
+  it('fill_form reports hide-field keys as notFound and never sets them', async () => {
+    const doc = mount(`
+      <main><form aria-label="Profile">
+        <label for="nm">Name</label><input id="nm" name="nm">
+        <label for="internal">Internal</label><input id="internal" name="internal" data-agent-hide>
+      </form></main>`);
+    const runtime = new Runtime();
+    await runtime.register(fillFormTool(makeEnv(doc)));
+    const out = JSON.parse(
+      (await runtime.executeTool(
+        'fill_form',
+        JSON.stringify({ ref: refFor(doc.querySelector('#nm')!), values: { Name: 'Will', Internal: 'sneaky' } })
+      )) as string
+    ) as { filled: Array<{ field: string; status: string }>; notFound?: string[] };
+    expect(out.filled.find((f) => f.field === 'Name')!.status).toBe('set');
+    expect(out.notFound).toContain('Internal');
+    expect(doc.querySelector<HTMLInputElement>('#internal')!.value).toBe('');
   });
 });
 

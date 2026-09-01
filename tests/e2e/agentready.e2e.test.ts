@@ -214,6 +214,11 @@ describe('synthesized tools + SPA updates', () => {
       expect(out.length).toBeLessThanOrEqual(1500);
     }
   }, 30000);
+
+  it('find_on_page never surfaces data-agent-hide fields', async () => {
+    const out = (await agent.executeTool(page, 'find_on_page', { query: 'secret_note' })) as string;
+    expect(out).toContain('No match');
+  }, 30000);
 });
 
 describe('demo store flow', () => {

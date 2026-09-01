@@ -109,6 +109,7 @@ function setField(env: AgentEnv, ref: string, value: string): string {
   if (!el) return `Ref "${ref}" is stale. Run find_on_page again.`;
   const cls = classifyField(el);
   if (cls.level === 'never') return `Refused: ${cls.reason}. This field is never exposed to agents.`;
+  if (el.closest('[data-agent-hide]')) return `Refused: field is excluded via data-agent-hide. This field is never exposed to agents.`;
   env.highlight(el, { sticky: true });
   const ok = setControlValue(el as FormControl, value);
   if (!ok) return `Could not set "${env.labelOf(el)}" to ${JSON.stringify(value)} (e.g. select option not found).`;
@@ -147,7 +148,7 @@ function fillForm(env: AgentEnv, ref: string, values: Record<string, unknown>): 
   if (!form) return 'Target is not a form and is not inside one.';
   const fields = Array.from(
     form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea')
-  ).filter((f) => env.isVisible(f) && !f.disabled && f.getAttribute('type') !== 'hidden');
+  ).filter((f) => env.isVisible(f) && !f.disabled && f.getAttribute('type') !== 'hidden' && !f.closest('[data-agent-hide]'));
 
   const results: Array<{ field: string; status: string; reason?: string; value?: string }> = [];
   const notFound: string[] = [];

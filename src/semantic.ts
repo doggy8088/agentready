@@ -189,8 +189,8 @@ export function describeNode(el: Element, doc: Document = el.ownerDocument): Sem
   };
 
   const isFieldTag = ['input', 'select', 'textarea'].includes(tag);
-  if (isFieldTag && classifyField(el).level === 'never') {
-    node.hiddenFromAgents = true; // sensitive: never expose details or values
+  if (isFieldTag && (classifyField(el).level === 'never' || el.closest('[data-agent-hide]'))) {
+    node.hiddenFromAgents = true; // sensitive or opted-out: never expose details or values
     return node;
   }
 
@@ -256,7 +256,8 @@ export function discover(doc: Document): Discovery {
   const els = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR));
   const nodes = els
     .filter((el) => isVisible(el) && !el.closest('[data-agentready-ignore]'))
-    .map((el) => describeNode(el, doc));
+    .map((el) => describeNode(el, doc))
+    .filter((n) => !n.hiddenFromAgents);
 
   const landmarks = Array.from(root.querySelectorAll(LANDMARK_SELECTOR))
     .slice(0, 20)

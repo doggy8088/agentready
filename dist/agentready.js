@@ -590,7 +590,7 @@
       visible: isVisible(el)
     };
     const isFieldTag = ["input", "select", "textarea"].includes(tag);
-    if (isFieldTag && classifyField(el).level === "never") {
+    if (isFieldTag && (classifyField(el).level === "never" || el.closest("[data-agent-hide]"))) {
       node.hiddenFromAgents = true;
       return node;
     }
@@ -669,7 +669,7 @@
     pruneRefs();
     const root = doc.body ?? doc.documentElement;
     const els = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR));
-    const nodes = els.filter((el) => isVisible(el) && !el.closest("[data-agentready-ignore]")).map((el) => describeNode(el, doc));
+    const nodes = els.filter((el) => isVisible(el) && !el.closest("[data-agentready-ignore]")).map((el) => describeNode(el, doc)).filter((n) => !n.hiddenFromAgents);
     const landmarks = Array.from(root.querySelectorAll(LANDMARK_SELECTOR)).slice(0, 20).map((el) => {
       const heading = el.querySelector("h1, h2, h3");
       return {
@@ -842,6 +842,8 @@
     const cls = classifyField(el);
     if (cls.level === "never")
       return `Refused: ${cls.reason}. This field is never exposed to agents.`;
+    if (el.closest("[data-agent-hide]"))
+      return `Refused: field is excluded via data-agent-hide. This field is never exposed to agents.`;
     env.highlight(el, { sticky: true });
     const ok = setControlValue(el, value);
     if (!ok)
@@ -874,7 +876,7 @@
     const form = el.tagName === "FORM" ? el : el.closest("form");
     if (!form)
       return "Target is not a form and is not inside one.";
-    const fields = Array.from(form.querySelectorAll("input, select, textarea")).filter((f) => env.isVisible(f) && !f.disabled && f.getAttribute("type") !== "hidden");
+    const fields = Array.from(form.querySelectorAll("input, select, textarea")).filter((f) => env.isVisible(f) && !f.disabled && f.getAttribute("type") !== "hidden" && !f.closest("[data-agent-hide]"));
     const results = [];
     const notFound = [];
     for (const [key, raw] of Object.entries(values)) {
