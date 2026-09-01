@@ -33,6 +33,7 @@
   "author": "Will Huang",
   "license": "MIT",
   "devDependencies": {
+    "@google/genai": "^2.19.0",
     "@types/bun": "^1.4.0",
     "happy-dom": "^15.11.7",
     "playwright": "^1.62.1",
@@ -41,8 +42,5 @@
   "allowScripts": {
     "esbuild@0.24.2": true,
     "esbuild@0.21.5": true
-  },
-  "dependencies": {
-    "@google/genai": "^2.19.0"
   }
 }

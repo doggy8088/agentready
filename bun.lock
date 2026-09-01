@@ -4,10 +4,8 @@
   "workspaces": {
     "": {
       "name": "agentready",
-      "dependencies": {
-        "@google/genai": "^2.19.0",
-      },
       "devDependencies": {
+        "@google/genai": "^2.19.0",
         "@types/bun": "^1.4.0",
         "happy-dom": "^15.11.7",
         "playwright": "^1.62.1",
