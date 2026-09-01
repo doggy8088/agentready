@@ -545,15 +545,16 @@ describe('audit fixes E1–E7', () => {
 // ---------- accuracy fixes (plan 002) ----------
 describe('accuracy fixes (plan 002)', () => {
   it('allows benign names that collide with sensitive substrings', () => {
-    const doc = mount('<form><input name="author"><input name="decide"><input name="email"></form>');
-    const [author, decide, email] = doc.querySelectorAll('input');
+    const doc = mount('<form><input name="author"><input name="authorize"><input name="decide"><input name="email"></form>');
+    const [author, authorize, decide, email] = doc.querySelectorAll('input');
     expect(classifyField(author!).level).toBe('allow');
+    expect(classifyField(authorize!).level).toBe('allow');
     expect(classifyField(decide!).level).toBe('allow');
     expect(classifyField(email!).level).toBe('allow');
   });
 
   it('still refuses genuinely sensitive names', () => {
-    const doc = mount('<form><input name="auth_token"><input name="oauth_state"><input name="cid"><input name="api_key"></form>');
+    const doc = mount('<form><input name="auth_token"><input name="oauth_state"><input name="authorization_code"><input name="cid"><input name="api_key"></form>');
     for (const el of doc.querySelectorAll('input')) {
       expect(classifyField(el).level).toBe('never');
     }

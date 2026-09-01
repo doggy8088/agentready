@@ -3,7 +3,7 @@
   var MAX_OUTPUT_CHARS = 1500;
   var MAX_DESC_CHARS = 500;
   var MAX_RESULTS = 10;
-  var SENSITIVE_NAME_RE = /pass(word)?|pwd|secret|token|api[-_]?key|auth(?!or)|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|\bcid\b|security[-_]?code|expiry|exp[-_]?date|cv2/i;
+  var SENSITIVE_NAME_RE = /pass(word)?|pwd|secret|token|api[-_]?key|auth(?!or)|authorization|credential|ssn|social[-_]?sec|card[-_]?num|cc[-_]?num|cvc|cvv|\bcid\b|security[-_]?code|expiry|exp[-_]?date|cv2/i;
   var NEVER_AUTOCOMPLETE = new Set([
     "current-password",
     "new-password",
