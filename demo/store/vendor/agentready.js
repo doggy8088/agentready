@@ -1070,7 +1070,7 @@
   var MAX_OPTIONS_IN_SCHEMA = 24;
   var MAX_NAME_CHARS = 30;
   var MAX_PARAM_DESC_CHARS = 150;
-  function synthesizeFormTools(env) {
+  function synthesizeFormTools(env, reserved = new Set) {
     const tools = [];
     const used = new Set;
     const forms = env.snapshot.forms;
@@ -1082,7 +1082,7 @@
         continue;
       let name = info.name;
       let i = 2;
-      while (used.has(name))
+      while (used.has(name) || reserved.has(name))
         name = `${info.name}_${i++}`;
       used.add(name);
       env.formInfo.set(form, info);
@@ -1343,8 +1343,8 @@
         trackedControllers.clear();
       }
     });
-    await registerCoreTools(runtime, envAwake(env));
-    const resynth = await registerFormTools(runtime, env);
+    const coreNames = await registerCoreTools(runtime, envAwake(env));
+    const resynth = await registerFormTools(runtime, env, coreNames);
     inspector?.setToolCount(runtime.size);
     let debounce;
     const observer = new MutationObserver(() => {
@@ -1359,7 +1359,17 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["hidden", "style", "class"]
+      attributeFilter: [
+        "hidden",
+        "style",
+        "class",
+        "data-agent-name",
+        "data-agent-tool",
+        "data-agent-description",
+        "data-agent-submit",
+        "data-agent-priority",
+        "data-agent-hide"
+      ]
     });
     exposePublicApi(runtime, env, config);
     console.info(`[AgentReady] v${VERSION} — ${runtime.size} tools registered. Native WebMCP: ${runtime.hasNative ? `yes (${runtime.nativeTransport})` : "in-page shim (no transport on this engine)"}`);
@@ -1417,13 +1427,14 @@
         console.warn(`[AgentReady] Could not register core tool ${tool.name}:`, err instanceof Error ? err.message : err);
       }
     }
+    return new Set(core.map((t) => t.name));
   }
-  async function registerFormTools(runtime, env) {
+  async function registerFormTools(runtime, env, reserved) {
     let previousControllers = [];
     const registerBatch = async () => {
       const controllers = [];
       try {
-        const tools = synthesizeFormTools(env);
+        const tools = synthesizeFormTools(env, reserved);
         for (const t of tools) {
           const controller = track(new AbortController);
           try {
@@ -1440,13 +1451,19 @@
       return controllers;
     };
     previousControllers = await registerBatch();
+    let queue = Promise.resolve();
     return async function resynth() {
-      for (const controller of previousControllers) {
-        trackedControllers.delete(controller);
-        if (!controller.signal.aborted)
-          controller.abort();
-      }
-      previousControllers = await registerBatch();
+      queue = queue.then(async () => {
+        const retiring = previousControllers;
+        previousControllers = [];
+        for (const controller of retiring) {
+          trackedControllers.delete(controller);
+          if (!controller.signal.aborted)
+            controller.abort();
+        }
+        previousControllers = await registerBatch();
+      });
+      return queue;
     };
   }
   function exposePublicApi(runtime, env, config) {

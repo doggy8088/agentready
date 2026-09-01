@@ -61,8 +61,8 @@ async function boot(): Promise<void> {
     },
   });
 
-  await registerCoreTools(runtime, envAwake(env));
-  const resynth = await registerFormTools(runtime, env);
+  const coreNames = await registerCoreTools(runtime, envAwake(env));
+  const resynth = await registerFormTools(runtime, env, coreNames);
   inspector?.setToolCount(runtime.size);
 
   // Re-discover on DOM mutations; re-synthesize form tools when forms change.
@@ -79,7 +79,11 @@ async function boot(): Promise<void> {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['hidden', 'style', 'class'],
+    attributeFilter: [
+      'hidden', 'style', 'class',
+      'data-agent-name', 'data-agent-tool', 'data-agent-description',
+      'data-agent-submit', 'data-agent-priority', 'data-agent-hide',
+    ],
   });
 
   exposePublicApi(runtime, env, config);
@@ -128,7 +132,7 @@ function envAwake(env: AgentEnv): AgentEnv {
   }) as AgentEnv;
 }
 
-async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<void> {
+async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<ReadonlySet<string>> {
   const core = [
     pageContextTool(env),
     findTool(env),
@@ -147,15 +151,21 @@ async function registerCoreTools(runtime: Runtime, env: AgentEnv): Promise<void>
       console.warn(`[AgentReady] Could not register core tool ${tool.name}:`, err instanceof Error ? err.message : err);
     }
   }
+  // Reserved names: synthesized tools must never shadow a core tool.
+  return new Set(core.map((t) => t.name));
 }
 
-async function registerFormTools(runtime: Runtime, env: AgentEnv): Promise<() => Promise<void>> {
+async function registerFormTools(
+  runtime: Runtime,
+  env: AgentEnv,
+  reserved: ReadonlySet<string>
+): Promise<() => Promise<void>> {
   let previousControllers: AbortController[] = [];
 
   const registerBatch = async (): Promise<AbortController[]> => {
     const controllers: AbortController[] = [];
     try {
-      const tools = synthesizeFormTools(env);
+      const tools = synthesizeFormTools(env, reserved);
       for (const t of tools) {
         const controller = track(new AbortController());
         try {
@@ -175,14 +185,23 @@ async function registerFormTools(runtime: Runtime, env: AgentEnv): Promise<() =>
   };
 
   previousControllers = await registerBatch();
+  let queue: Promise<void> = Promise.resolve();
   return async function resynth(): Promise<void> {
-    // Retire the previous batch (abort → native unregister), then register the
-    // fresh batch under brand-new signals.
-    for (const controller of previousControllers) {
-      trackedControllers.delete(controller);
-      if (!controller.signal.aborted) controller.abort();
-    }
-    previousControllers = await registerBatch();
+    // Serialized: at most one retire/register cycle runs at a time, so
+    // interleaved observer callbacks cannot double-retire or orphan a batch.
+    queue = queue.then(async () => {
+      // Read + clear the previous batch synchronously, before any await —
+      // a queued peer must never see the same controllers twice.
+      const retiring = previousControllers;
+      previousControllers = [];
+      for (const controller of retiring) {
+        trackedControllers.delete(controller);
+        if (!controller.signal.aborted) controller.abort();
+      }
+      // Register the fresh batch under brand-new signals.
+      previousControllers = await registerBatch();
+    });
+    return queue;
   };
 }
 

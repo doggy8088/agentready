@@ -19,7 +19,7 @@ const MAX_OPTIONS_IN_SCHEMA = 24;
 const MAX_NAME_CHARS = 30;
 const MAX_PARAM_DESC_CHARS = 150;
 
-export function synthesizeFormTools(env: AgentEnv): ToolDefinition[] {
+export function synthesizeFormTools(env: AgentEnv, reserved: ReadonlySet<string> = new Set()): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
   const used = new Set<string>();
   const forms = env.snapshot.forms;
@@ -32,7 +32,7 @@ export function synthesizeFormTools(env: AgentEnv): ToolDefinition[] {
     if (!info) continue;
     let name = info.name;
     let i = 2;
-    while (used.has(name)) name = `${info.name}_${i++}`;
+    while (used.has(name) || reserved.has(name)) name = `${info.name}_${i++}`;
     used.add(name);
     env.formInfo.set(form, info);
     tools.push(buildTool(env, info, name));
