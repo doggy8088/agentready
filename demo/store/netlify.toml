@@ -1,7 +1,12 @@
-publish = "demo/store"
+publish = "."
 command = "bun run build"
 
 [[headers]]
   for = "/vendor/agentready.js"
   [headers.values]
     Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
