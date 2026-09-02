@@ -193,6 +193,7 @@ src/
   semantic.ts         DOM discovery, stable refs (WeakRef), natural-language matching
   policy.ts           exposure levels, output budgets, sensitive-field redaction
   inspector.ts        shadow-DOM activity UI + human approval dialog
+  env.ts              shared types: AgentEnv, AgentReadyConfig, FormInfo, Activity
   tools/              page.ts · interact.ts · forms.ts · controls.ts
 demo/store/           Legacy Store demo (self-contained, deployable)
 demo/test-page/       verification harness

@@ -50,6 +50,7 @@ src/
 ├── semantic.ts     # DOM discovery, WeakRef stable reference pool, natural language element matching
 ├── policy.ts       # Safety classification (allow / confirm / never), credential redaction, token budgets
 ├── inspector.ts    # Shadow DOM user interface badge, activity logger, and human approval modal
+├── env.ts          # Shared types: AgentEnv, AgentReadyConfig, FormInfo, Activity
 └── tools/          # Core WebMCP tool implementations
     ├── page.ts     # get_page_context, find_on_page, read_target
     ├── interact.ts # activate_target, set_field, fill_form, submit_form

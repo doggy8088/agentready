@@ -181,6 +181,7 @@ src/
   semantic.ts         DOM 探索、穩定 refs(WeakRef)、自然語言比對
   policy.ts           暴露等級、輸出預算、敏感欄位遮蔽
   inspector.ts        shadow-DOM 活動 UI + 人類核准對話框
+  env.ts              共用型別:AgentEnv、AgentReadyConfig、FormInfo、Activity
   tools/              page.ts · interact.ts · forms.ts · controls.ts
 demo/store/           Legacy Store 展示站(自包含、可直接部署)
 demo/test-page/       驗證頁

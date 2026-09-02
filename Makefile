@@ -10,7 +10,7 @@
 #   make test        — unit tests (bun:test + happy-dom)
 #   make test-e2e    — E2E tests (Playwright, real Chrome)
 #   make test-all    — typecheck + unit + e2e
-#   make check       — quick check: typecheck + test + size
+#   make check       — quick check: typecheck + lint + test + size
 #   make ci          — full gate: typecheck → lint → types → build → unit → size → e2e
 #   make demo        — serve the demo store + test page locally
 #   make release-tag — tag and push a new release (usage: make release-tag TAG=v0.1.0)
@@ -54,7 +54,7 @@ test-e2e: ## Run E2E tests (builds first so the bundle is fresh)
 test-all: ## Typecheck + unit + E2E
 	bun run test:all
 
-check: ## Quick check: typecheck + test + size
+check: ## Quick check: typecheck + lint + test + size
 	bun run check
 
 ci: ## Full verification gate: typecheck → lint → types → build → min → unit → size → E2E
