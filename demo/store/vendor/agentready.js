@@ -661,6 +661,50 @@
     '[tabindex]:not([tabindex="-1"])'
   ].join(",");
   var LANDMARK_SELECTOR = "header, nav, main, aside, footer, section[aria-label], form[aria-label], [role=main], [role=navigation], [role=search], [role=dialog], [role=alertdialog]";
+  function collectInteractive(doc, deep) {
+    const out = [];
+    const visit = (root) => {
+      for (const el of Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR)))
+        out.push(el);
+      if (!deep)
+        return;
+      for (const host of Array.from(root.querySelectorAll("*"))) {
+        if (host.shadowRoot)
+          visit(host.shadowRoot);
+        if (host.tagName === "IFRAME") {
+          try {
+            const d = host.contentDocument;
+            if (d?.body)
+              visit(d.body);
+          } catch {}
+        }
+      }
+    };
+    visit(doc.body ?? doc.documentElement);
+    return out;
+  }
+  function collectForms(doc, deep) {
+    const out = [];
+    const visit = (root) => {
+      for (const f of Array.from(root.querySelectorAll("form")))
+        out.push(f);
+      if (!deep)
+        return;
+      for (const host of Array.from(root.querySelectorAll("*"))) {
+        if (host.shadowRoot)
+          visit(host.shadowRoot);
+        if (host.tagName === "IFRAME") {
+          try {
+            const d = host.contentDocument;
+            if (d?.body)
+              visit(d.body);
+          } catch {}
+        }
+      }
+    };
+    visit(doc.body ?? doc.documentElement);
+    return out;
+  }
   function refFor(el) {
     let ref = elToRef.get(el);
     if (!ref) {
@@ -684,10 +728,11 @@
       if (!wr.deref())
         refToEl.delete(ref);
   }
-  function discover(doc) {
+  function discover(doc, opts = {}) {
     pruneRefs();
+    const deep = opts.deep === true;
     const root = doc.body ?? doc.documentElement;
-    const els = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR));
+    const els = collectInteractive(doc, deep);
     const nodes = els.filter((el) => isVisible(el) && !el.closest("[data-agentready-ignore]")).map((el) => describeNode(el, doc)).filter((n) => !n.hiddenFromAgents);
     const landmarks = Array.from(root.querySelectorAll(LANDMARK_SELECTOR)).slice(0, 20).map((el) => {
       const heading = el.querySelector("h1, h2, h3");
@@ -697,7 +742,7 @@
       };
     });
     const headings = Array.from(root.querySelectorAll("h1, h2, h3")).slice(0, 40).filter((h) => isVisible(h)).map((h) => ({ level: Number(h.tagName.slice(1)), text: cleanText(h).slice(0, 120) }));
-    const forms = Array.from(root.querySelectorAll("form")).filter((f) => isVisible(f) && !f.closest("[data-agentready-ignore]"));
+    const forms = collectForms(doc, deep).filter((f) => isVisible(f) && !f.closest("[data-agentready-ignore]"));
     return { nodes, landmarks, headings, forms, title: doc.title, url: doc.URL };
   }
   function matchNodes(query, nodes, { kind, limit = 8 } = {}) {
@@ -1388,7 +1433,7 @@
       config,
       formInfo: new Map,
       discover() {
-        snapshotCache = discover(document);
+        snapshotCache = discover(document, { deep: config.shadowDiscovery === true });
         return snapshotCache;
       },
       get snapshot() {

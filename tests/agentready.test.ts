@@ -8,7 +8,7 @@ import type { Discovery } from '../src/semantic.js';
 import { describeNode, discover, escapeCss, matchNodes, refFor, resolveRef } from '../src/semantic.js';
 import { setControlValue } from '../src/tools/controls.js';
 import { analyzeForm, synthesizeFormTools } from '../src/tools/forms.js';
-import { activateTargetTool, fillFormTool, setFieldTool } from '../src/tools/interact.js';
+import { activateTargetTool, fieldLabel, fillFormTool, setFieldTool } from '../src/tools/interact.js';
 import { findTool, pageContextTool, readTargetTool } from '../src/tools/page.js';
 
 let document: Document;
@@ -20,14 +20,14 @@ function mount(html: string): Document {
   return document;
 }
 
-function makeEnv(doc: Document, { approve = true } = {}): AgentEnv {
+function makeEnv(doc: Document, { approve = true, deep = false } = {}): AgentEnv {
   let snapshotCache: Discovery | null = null;
   return {
     doc,
     config: { inspector: false, siteName: 'test', maxResults: 8 },
     formInfo: new Map(),
     discover() {
-      snapshotCache = discover(doc);
+      snapshotCache = discover(doc, { deep });
       return snapshotCache!;
     },
     get snapshot() {
@@ -1159,5 +1159,155 @@ describe('registration lifecycle (plan 007)', () => {
     await runtime.register({ name: 'dup_tool', description: 'second', execute: () => 'second' });
     expect((await runtime.getTools()).length).toBe(1);
     expect(String(await runtime.executeTool('dup_tool', '{}'))).toBe('second');
+  });
+});
+
+// ---------- shadow discovery (plan 010 spike — every test here is flag-gated) ----------
+
+describe('shadow discovery (flagged spike)', () => {
+  /** Page with a shadow-attached widget AND a same-origin iframe; returns the pieces under test. */
+  function mountShadowPage(html: string): { doc: Document; host: HTMLElement } {
+    const doc = mount(html);
+    const host = doc.createElement('spike-widget');
+    host.attachShadow({ mode: 'open' }).innerHTML =
+      '<button id="sb">Shadow hello</button>' +
+      '<form id="sf" aria-label="Shadow newsletter" method="post"><input id="sem" name="email" type="email" aria-label="Shadow email"><button>Shadow subscribe</button></form>';
+    doc.body.appendChild(host);
+    doc.body.insertAdjacentHTML('beforeend', '<iframe id="ifr" src="about:blank"></iframe>');
+    const ifr = doc.getElementById('ifr') as unknown as HTMLIFrameElement;
+    ifr.contentDocument!.body.innerHTML = '<button>Iframe hello</button>';
+    return { doc, host };
+  }
+
+  it('flag off (default): shadow and iframe content are invisible to discover — light DOM only', () => {
+    const { doc } = mountShadowPage('<main><button id="light-btn">Light hello</button></main>');
+    const snap = discover(doc); // no opts → deep off (the default)
+    expect(snap.nodes.map((n) => n.name)).toEqual(['Light hello']);
+    expect(snap.forms.length).toBe(0);
+  });
+
+  it('flag on: shadow button discovered with a stable ref; resolveRef derefs it across passes (Q2)', () => {
+    const { doc, host } = mountShadowPage('<main><button id="light-btn">Light hello</button></main>');
+    const shadowBtn = host.shadowRoot!.querySelector('#sb')!;
+    const d1 = discover(doc, { deep: true });
+    expect(d1.nodes.map((n) => n.name)).toEqual([
+      'Light hello',
+      'Shadow hello',
+      'Shadow email',
+      'Shadow subscribe',
+      'Iframe hello',
+    ]);
+    const node = d1.nodes.find((n) => n.name === 'Shadow hello')!;
+    expect(node.ref).toBe(refFor(shadowBtn)); // refFor is element-identity-keyed — shadow-agnostic
+    expect(resolveRef(node.ref)).toBe(shadowBtn); // resolveRef only checks isConnected — works for shadow children
+    const d2 = discover(doc, { deep: true }); // second pass
+    expect(d2.nodes.find((n) => n.name === 'Shadow hello')!.ref).toBe(node.ref); // stable across passes
+  });
+
+  it('flag on: same-origin iframe content is discovered (Q5-iframe)', () => {
+    const { doc } = mountShadowPage('<main></main>');
+    const snap = discover(doc, { deep: true });
+    const names = snap.nodes.map((n) => n.name);
+    expect(names).toContain('Iframe hello');
+  });
+
+  it('flag on: shadow password field is classified never and filtered from the public snapshot (Q8, plan 004)', () => {
+    const doc = mount('<main></main>');
+    const host = doc.createElement('spike-login');
+    host.attachShadow({ mode: 'open' }).innerHTML =
+      '<form aria-label="Shadow login" method="post">' +
+      '<input id="spw" name="pw" type="password" value="hunter2">' +
+      '<input id="sem" name="email" type="email" aria-label="Shadow email"></form>';
+    doc.body.appendChild(host);
+    const shadowPw = host.shadowRoot!.querySelector('#spw')!;
+    expect(classifyField(shadowPw).level).toBe('never'); // per-element classification is shadow-agnostic
+    const { nodes } = discover(doc, { deep: true });
+    expect(nodes.length).toBe(1); // only the email field survives
+    expect(nodes[0]!.name).toBe('Shadow email');
+    expect(JSON.stringify(nodes)).not.toContain('hunter2'); // sensitive value never serialized
+  });
+
+  it('flag on: data-agent-hide on a host does NOT hide shadow children — documented gap (Q8)', () => {
+    const doc = mount('<main></main>');
+    const host = doc.createElement('spike-hidden');
+    host.setAttribute('data-agent-hide', ''); // site-owner opt-out on the host
+    host.attachShadow({ mode: 'open' }).innerHTML =
+      '<input id="note" name="note" aria-label="shadow internal note" value="shadow-secret">';
+    doc.body.appendChild(host);
+    const { nodes } = discover(doc, { deep: true });
+    // GAP (documented in docs/SHADOW_DOM_SPIKE.md, NOT fixed in the spike):
+    // closest('[data-agent-hide]') does not cross the shadow boundary, so the
+    // host-level opt-out leaks the shadow child (name + value) into the snapshot.
+    // classifyField-based 'never' protection still works per element (test above).
+    const n = nodes.find((x) => x.name === 'shadow internal note');
+    expect(n).toBeDefined();
+    expect(JSON.stringify(nodes)).toContain('shadow-secret');
+  });
+
+  it('flag on: [hidden] and data-agentready-ignore hosts still contribute visible shadow children — documented gap (Q3)', () => {
+    const doc = mount('<main></main>');
+    const hiddenHost = doc.createElement('spike-h');
+    hiddenHost.setAttribute('hidden', '');
+    hiddenHost.attachShadow({ mode: 'open' }).innerHTML = '<button id="hb">Shadow hidden-host button</button>';
+    doc.body.appendChild(hiddenHost);
+    const ignoredHost = doc.createElement('spike-i');
+    ignoredHost.setAttribute('data-agentready-ignore', '');
+    ignoredHost.attachShadow({ mode: 'open' }).innerHTML = '<button id="ib">Shadow ignored-host button</button>';
+    doc.body.appendChild(ignoredHost);
+    const { nodes } = discover(doc, { deep: true });
+    // GAP (documented): closest() stops at the shadow root — host attributes do
+    // not propagate to shadow children, and getComputedStyle on the child
+    // reports the child's own style, not the host's.
+    const hb = nodes.find((n) => n.name === 'Shadow hidden-host button');
+    expect(hb).toBeDefined();
+    expect(hb!.visible).toBe(true);
+    expect(nodes.some((n) => n.name === 'Shadow ignored-host button')).toBe(true);
+  });
+
+  it('flag on: form inside a shadow root is collected, analyzed and synthesized into a fill tool (Q5)', async () => {
+    const { doc, host } = mountShadowPage('<main></main>');
+    const env = makeEnv(doc, { deep: true });
+    expect(env.discover().forms.length).toBe(1);
+    const shadowForm = host.shadowRoot!.querySelector('#sf') as unknown as HTMLFormElement;
+    expect(analyzeForm(shadowForm)!.name).toBe('shadow_newsletter');
+    const tools = synthesizeFormTools(env);
+    expect(tools.map((t) => t.name)).toContain('shadow_newsletter');
+    const runtime = new Runtime();
+    for (const t of tools) await runtime.register(t);
+    const out = JSON.parse(
+      (await runtime.executeTool('shadow_newsletter', JSON.stringify({ email: 'a@b.c' }))) as string,
+    ) as { status: string; filled: Array<{ field: string; value: string; ok: boolean }> };
+    expect(out.status).toBe('filled');
+    expect(out.filled[0]!.ok).toBe(true);
+    expect(host.shadowRoot!.querySelector<HTMLInputElement>('#sem')!.value).toBe('a@b.c');
+  });
+
+  it('flag on: labels inside shadow roots — .labels resolves label[for] (fieldLabel), but accessibleName\u2019s doc-scoped lookup misses it (Q4)', () => {
+    const doc = mount('<main></main>');
+    const host = doc.createElement('spike-label');
+    host.attachShadow({ mode: 'open' }).innerHTML =
+      '<label for="em">Shadow email</label><input id="em" name="em" type="email">' +
+      '<label><input id="wrapped" type="text"> Shadow wrapped</label>';
+    doc.body.appendChild(host);
+    const forInput = host.shadowRoot!.querySelector('#em')!;
+    const wrapped = host.shadowRoot!.querySelector('#wrapped')!;
+    expect(fieldLabel(forInput)).toBe('Shadow email'); // HTMLInputElement.labels is tree-scoped — works inside shadow
+    expect(describeNode(forInput, doc).name).toBe('(unlabelled input)'); // label[for] lookup via doc.querySelector is document-scoped — misses shadow labels
+    expect(describeNode(wrapped, doc).name).toBe('Shadow wrapped'); // wrapping label found via closest() — works inside the shadow tree
+  });
+
+  it('flag on: javascript: links inside shadow roots are still refused by classifyAction (Q8, plan 004 rule)', async () => {
+    const doc = mount('<main></main>');
+    const host = doc.createElement('spike-js');
+    host.attachShadow({ mode: 'open' }).innerHTML = '<a id="jslink" href="javascript:alert(1)">Shadow tricky</a>';
+    doc.body.appendChild(host);
+    const link = host.shadowRoot!.querySelector('#jslink')!;
+    expect(classifyAction(link).level).toBe('never'); // per-element rule applies unchanged inside shadow roots
+    expect(classifyAction(link).reason).toContain('script URI');
+    const runtime = new Runtime();
+    await runtime.register(activateTargetTool(makeEnv(doc, { deep: true })));
+    const out = (await runtime.executeTool('activate_target', JSON.stringify({ ref: refFor(link) }))) as string;
+    expect(out).toContain('Refused');
+    expect(out).toContain('script URI');
   });
 });

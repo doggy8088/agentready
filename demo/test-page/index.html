@@ -87,6 +87,36 @@
   <button id="inject-form">Inject newsletter form</button>
   <div id="inject-target"></div>
 
+  <h2>5. Shadow DOM widget (plan 010 spike fixture)</h2>
+  <p>Interactive content lives entirely inside the widget's shadow root. Invisible to AgentReady
+    by default; discovered end-to-end when <code>AgentReadyConfig.shadowDiscovery</code> is on.</p>
+  <shadow-spike-widget></shadow-spike-widget>
+  <div id="shadow-log">Shadow widget idle.</div>
+
+  <script>
+    // Plan 010 spike fixture: one custom element, all interactive content in its open shadow root.
+    customElements.define(
+      'shadow-spike-widget',
+      class extends HTMLElement {
+        constructor() {
+          super();
+          const shadow = this.attachShadow({ mode: 'open' });
+          shadow.innerHTML =
+            '<button id="shadow-btn" type="button">Shadow hello</button>' +
+            '<form id="shadow-form" aria-label="Shadow newsletter" method="post" onsubmit="return false">' +
+            '<label for="sem">Shadow email</label>' +
+            '<input id="sem" name="email" type="email" placeholder="you@example.com">' +
+            '<button type="submit">Shadow subscribe</button>' +
+            '</form>';
+          shadow.getElementById('shadow-btn').addEventListener('click', () => {
+            document.getElementById('shadow-log').textContent =
+              'Shadow button activated at ' + new Date().toISOString();
+          });
+        }
+      },
+    );
+  </script>
+
   <h2>Scenario console</h2>
   <p>Run from DevTools or the E2E suite, e.g.
     <code>AgentReady.executeTool('find_on_page', JSON.stringify({query:'add to cart'}))</code></p>

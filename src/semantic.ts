@@ -241,6 +241,59 @@ const INTERACTIVE_SELECTOR = [
 const LANDMARK_SELECTOR =
   'header, nav, main, aside, footer, section[aria-label], form[aria-label], [role=main], [role=navigation], [role=search], [role=dialog], [role=alertdialog]';
 
+/**
+ * Spike (shadowDiscovery flag, default off): flat queries when deep=false —
+ * byte-identical behavior and cost to the pre-spike code path (the host scan
+ * below is skipped entirely). When deep=true, also walks open shadow roots
+ * and same-origin iframes recursively.
+ *
+ * Note: iframes are detected by tagName, not `instanceof HTMLIFrameElement`,
+ * because bun's unit-test runtime has no DOM globals (ReferenceError there);
+ * the duck-check works in every environment.
+ */
+function collectInteractive(doc: Document, deep: boolean): Element[] {
+  const out: Element[] = [];
+  const visit = (root: ParentNode): void => {
+    for (const el of Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR))) out.push(el);
+    if (!deep) return;
+    for (const host of Array.from(root.querySelectorAll('*'))) {
+      if (host.shadowRoot) visit(host.shadowRoot);
+      if (host.tagName === 'IFRAME') {
+        try {
+          const d = (host as HTMLIFrameElement).contentDocument;
+          if (d?.body) visit(d.body);
+        } catch {
+          /* cross-origin iframe: skip */
+        }
+      }
+    }
+  };
+  visit(doc.body ?? doc.documentElement);
+  return out;
+}
+
+/** Spike companion walk for <form> — same traversal and flag semantics as collectInteractive. */
+function collectForms(doc: Document, deep: boolean): HTMLFormElement[] {
+  const out: HTMLFormElement[] = [];
+  const visit = (root: ParentNode): void => {
+    for (const f of Array.from(root.querySelectorAll('form'))) out.push(f);
+    if (!deep) return;
+    for (const host of Array.from(root.querySelectorAll('*'))) {
+      if (host.shadowRoot) visit(host.shadowRoot);
+      if (host.tagName === 'IFRAME') {
+        try {
+          const d = (host as HTMLIFrameElement).contentDocument;
+          if (d?.body) visit(d.body);
+        } catch {
+          /* cross-origin iframe: skip */
+        }
+      }
+    }
+  };
+  visit(doc.body ?? doc.documentElement);
+  return out;
+}
+
 export function refFor(el: Element): string {
   let ref = elToRef.get(el);
   if (!ref) {
@@ -263,11 +316,12 @@ export function pruneRefs(): void {
   for (const [ref, wr] of refToEl) if (!wr.deref()) refToEl.delete(ref);
 }
 
-/** Full page discovery pass. */
-export function discover(doc: Document): Discovery {
+/** Full page discovery pass. opts.deep (spike flag, default off) also walks open shadow roots and same-origin iframes. */
+export function discover(doc: Document, opts: { deep?: boolean } = {}): Discovery {
   pruneRefs();
+  const deep = opts.deep === true;
   const root = doc.body ?? doc.documentElement;
-  const els = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR));
+  const els = collectInteractive(doc, deep);
   const nodes = els
     .filter((el) => isVisible(el) && !el.closest('[data-agentready-ignore]'))
     .map((el) => describeNode(el, doc))
@@ -288,9 +342,7 @@ export function discover(doc: Document): Discovery {
     .filter((h) => isVisible(h))
     .map((h) => ({ level: Number(h.tagName.slice(1)), text: cleanText(h).slice(0, 120) }));
 
-  const forms = Array.from(root.querySelectorAll('form')).filter(
-    (f) => isVisible(f) && !f.closest('[data-agentready-ignore]'),
-  );
+  const forms = collectForms(doc, deep).filter((f) => isVisible(f) && !f.closest('[data-agentready-ignore]'));
   return { nodes, landmarks, headings, forms, title: doc.title, url: doc.URL };
 }
 

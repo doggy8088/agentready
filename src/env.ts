@@ -46,6 +46,12 @@ export interface AgentReadyConfig {
   inspector: boolean;
   siteName: string;
   maxResults: number;
+  /**
+   * Spike flag (default off — see docs/SHADOW_DOM_SPIKE.md): also discover
+   * interactive elements and forms inside open shadow roots and same-origin
+   * iframes. Boot defaults never set this key; absence means off.
+   */
+  shadowDiscovery?: boolean;
 }
 
 export interface AgentReadyApi {

@@ -329,3 +329,73 @@ describe('demo store flow', () => {
     expect(consoleErrors).toEqual([]);
   }, 30000);
 });
+
+// ---------- shadow discovery spike (plan 010 — flag ON via boot config) ----------
+
+describe('shadow discovery spike (flag on)', () => {
+  let ctx: BrowserContext;
+  let spikePage: Page;
+  const spikeErrors: string[] = [];
+
+  beforeAll(async () => {
+    ctx = await browser.newContext();
+    // Runs before every page script in this context — AgentReadyConfig is read at boot.
+    ctx.addInitScript(() => {
+      (window as unknown as { AgentReadyConfig?: { shadowDiscovery: boolean } }).AgentReadyConfig = {
+        shadowDiscovery: true,
+      };
+    });
+    spikePage = await ctx.newPage();
+    spikePage.on('console', (msg) => {
+      if (msg.type() === 'error' && !msg.text().includes('favicon')) spikeErrors.push(msg.text());
+    });
+    spikePage.on('pageerror', (err) => spikeErrors.push(String(err)));
+    await spikePage.goto(server.baseUrl + TEST_PAGE);
+    await spikePage.waitForFunction(
+      () => (window as unknown as { AgentReady?: unknown }).AgentReady !== undefined,
+      undefined,
+      { timeout: 10000 },
+    );
+  }, 30000);
+
+  afterAll(() => {
+    void ctx?.close();
+  }, 30000);
+
+  it('synthesizes a tool from the form inside the shadow root (Q5)', async () => {
+    const names = await agent.getToolNames(spikePage);
+    expect(names).toContain('shadow_newsletter');
+  }, 30000);
+
+  it('find_on_page returns the shadow button and activate_target clicks it (Q2 end-to-end)', async () => {
+    const raw = (await agent.executeTool(spikePage, 'find_on_page', {
+      query: 'shadow hello',
+      kind: 'action',
+    })) as string;
+    const parsed = JSON.parse(raw) as { results: Array<{ ref: string; name: string }> };
+    expect(parsed.results.length).toBeGreaterThan(0);
+    expect(parsed.results[0]!.name).toBe('Shadow hello');
+    const out = String(await agent.executeTool(spikePage, 'activate_target', { ref: parsed.results[0]!.ref }));
+    expect(out).toContain('Activated "Shadow hello"');
+    const log = (await spikePage.locator('#shadow-log').textContent()) ?? '';
+    expect(log).toContain('Shadow button activated');
+  }, 30000);
+
+  it('fills the shadow form field through the synthesized tool (Q5 end-to-end)', async () => {
+    const out = JSON.parse(
+      (await agent.executeTool(spikePage, 'shadow_newsletter', { email: 'shadow@e2e.dev' })) as string,
+    ) as { status: string; filled: Array<{ field: string; value: string; ok: boolean }> };
+    expect(out.status).toBe('filled');
+    expect(out.filled[0]!.ok).toBe(true);
+    const value = await spikePage.evaluate(
+      () =>
+        (document.querySelector('shadow-spike-widget')?.shadowRoot?.querySelector('#sem') as HTMLInputElement | null)
+          ?.value ?? '',
+    );
+    expect(value).toBe('shadow@e2e.dev');
+  }, 30000);
+
+  it('leaves no console errors on the flag-on page', () => {
+    expect(spikeErrors).toEqual([]);
+  }, 30000);
+});

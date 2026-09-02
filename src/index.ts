@@ -109,7 +109,7 @@ function createEnv(config: AgentReadyConfig, inspector: Inspector | null): Agent
     config,
     formInfo: new Map(),
     discover(): Discovery {
-      snapshotCache = discover(document);
+      snapshotCache = discover(document, { deep: config.shadowDiscovery === true });
       return snapshotCache;
     },
     get snapshot(): Discovery {
