@@ -11,7 +11,7 @@
 #   make test-e2e    — E2E tests (Playwright, real Chrome)
 #   make test-all    — typecheck + unit + e2e
 #   make check       — quick check: typecheck + test + size
-#   make ci          — full gate: typecheck → types → build → unit → size → e2e
+#   make ci          — full gate: typecheck → lint → types → build → unit → size → e2e
 #   make demo        — serve the demo store + test page locally
 #   make release-tag — tag and push a new release (usage: make release-tag TAG=v0.1.0)
 #   make clean       — remove build artifacts
@@ -57,7 +57,7 @@ test-all: ## Typecheck + unit + E2E
 check: ## Quick check: typecheck + test + size
 	bun run check
 
-ci: ## Full verification gate: typecheck → types → build → min → unit → size → E2E
+ci: ## Full verification gate: typecheck → lint → types → build → min → unit → size → E2E
 	bun run ci
 
 demo: ## Serve demo store + test page at http://localhost:$(PORT)

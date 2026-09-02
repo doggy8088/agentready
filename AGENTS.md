@@ -25,7 +25,7 @@ don't match a fresh build. Gitignored: `build/`, `dist/*.d.ts`.
 - `bun test tests/agentready.test.ts` — unit tests (happy-dom; fast)
 - `bun run build && bun test tests/e2e` — E2E (Playwright; real Chrome preferred, bundled Chromium fallback)
 - `bun run size` — bundle budget gate (75 KB raw / 45 KB min)
-- `make ci` — full local gate (typecheck → lint → types → build → unit → size → e2e)
+- `make ci` — full local gate (typecheck → lint → types → build → min → unit → size → e2e)
 - `bun run demo` / `make demo` — dev server at :8788 (`make demo PORT=…` overrides)
 
 ## Conventions

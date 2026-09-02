@@ -153,7 +153,7 @@ window.AgentReadyConfig = {
 
 ```bash
 bun install        # 或:make install
-make ci            # typecheck → build → 單元測試 → E2E(真 Chrome)
+make ci            # typecheck → lint → build → 單元測試 → size → E2E(真 Chrome)
 make demo          # 在 http://localhost:8788 啟動
 ```
 

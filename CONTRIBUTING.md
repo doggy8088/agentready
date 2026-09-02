@@ -78,8 +78,14 @@ tests/
 | `make size` | Check bundle size against budget limits |
 | `make test` | Run unit tests with Bun |
 | `make test-e2e` | Run Playwright E2E browser tests against real Chrome |
-| `make check` | Quick sanity check (typecheck + test + size) |
-| `make ci` | Full verification pipeline (typecheck → types → build → unit → size → E2E) |
+| `make check` | Quick sanity check (typecheck + lint + test + size) |
+| `make ci` | Full verification pipeline (typecheck → lint → types → build → min → unit → size → E2E) |
+| `make deploy-netlify` | Deploy the demo store to Netlify (prompts for login on first run) |
+| `make deploy-vercel` | Deploy the demo store to Vercel (links project on first run) |
+| `make deploy-cloudflare` | Deploy the demo store to Cloudflare Pages (login on first run) |
+| `make footage` | Re-capture real product footage + narration into `video/public/` |
+| `make video` | Render the demo video to `video/out/agentready-demo.mp4` |
+| `make studio` | Open Remotion Studio for the video project |
 
 ---
 
@@ -109,6 +115,7 @@ Releases are automated via GitHub Actions:
    make release-tag TAG=v0.1.0
    ```
 3. GitHub Actions will automatically:
-   - Run typecheck, unit tests, and build both unminified/minified bundles.
+   - Run typecheck, unit and E2E tests, and build both unminified/minified bundles.
    - Generate release notes from commits.
    - Publish the release on GitHub with `agentready.js`, `agentready.min.js`, and `agentready-types.tar.gz` attached.
+   - Publish `@willh/agentready` to npm with provenance (requires the `NPM_TOKEN` secret — see `docs/SUBMISSION.md`).

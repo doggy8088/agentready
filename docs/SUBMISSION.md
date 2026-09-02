@@ -25,7 +25,7 @@ Deadline: **Sep 3, 2026, 1:00 PM PT** (= Sep 4, 4:00 AM Taiwan time).
 
 - **WebMCP Leverage** — `registerTool`, dynamic re-registration, JSON Schemas,
   `readOnlyHint`/`untrustedContentHint`, `getTools()`/`executeTool()` in-page parity.
-- **Execution** — one-file runtime, demo store, test page, 53 automated tests (39 unit + 14 E2E), Makefile CI.
+- **Execution** — one-file runtime, demo store, test page, 108 automated tests (88 unit + 20 E2E), Makefile CI.
 - **Potential Impact** — any existing site becomes agent-ready with one script tag.
 - **Creativity & Ambition** — semantic refs, human-in-the-loop safety, agent interoperability.
 

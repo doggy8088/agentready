@@ -165,7 +165,7 @@ Toolchain: **Bun** for installs/bundling/serving, **TypeScript 7** (strict) for 
 
 ```bash
 bun install        # or: make install
-make ci            # typecheck → build → unit tests → E2E (real Chrome)
+make ci            # typecheck → lint → build → unit tests → size → E2E (real Chrome)
 make demo          # serve at http://localhost:8788
 ```
 
