@@ -102,5 +102,5 @@ $$\text{Token Savings} = 1 - \frac{\text{Tokens}_{\text{WebMCP Tool}}}{\text{Tok
 
 - Framework Adapters & Components: Native bindings and wrapper components for React, Vue, Svelte, and Next.js for even easier declarative tool mapping.
 - Multi-Modal Spatial Grounding: Integrating semantic bounding box data so agents combining visual and WebMCP modalities can visually correlate tools with UI components.
-- Public CDN & npm Package: Distributing @agentready/core via npm and global CDNs (Cloudflare, cdnjs, unpkg) for one-line deployment across the web.
+- Public CDN & npm Package: `@willh/agentready` on npm and global CDNs (jsdelivr, unpkg) for one-line deployment across the web — the provenance-gated publish workflow is in place; the first publish ships on the next tagged release.
 - Community Tool Templates: Pre-built semantic profiles for popular web platforms like Shopify, WordPress, WooCommerce, and Webflow to instantly expose rich store and CMS actions out of the box.

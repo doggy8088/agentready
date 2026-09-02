@@ -57,8 +57,10 @@ browsers without it — including ChatGPT desktop's register-only client).
 ### Level 0 — drop it in
 
 ```html
-<script src="https://your-cdn/agentready.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@willh/agentready@latest/dist/agentready.js" defer></script>
 ```
+
+Or install via npm: `npm install @willh/agentready` → serve `node_modules/@willh/agentready/dist/agentready.js`.
 
 That's it. AgentReady discovers the page and registers:
 

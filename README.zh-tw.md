@@ -48,8 +48,10 @@ WebMCP 讓網站把自身能力**宣告**給 agents,而不是讓 agents 靠截�
 ### Level 0 — 直接載入
 
 ```html
-<script src="https://your-cdn/agentready.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@willh/agentready@latest/dist/agentready.js" defer></script>
 ```
+
+或改用 npm 安裝:`npm install @willh/agentready` → 直接 serve `node_modules/@willh/agentready/dist/agentready.js`。
 
 就這樣。AgentReady 會探索頁面並註冊:
 

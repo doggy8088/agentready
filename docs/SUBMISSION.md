@@ -28,3 +28,13 @@ Deadline: **Sep 3, 2026, 1:00 PM PT** (= Sep 4, 4:00 AM Taiwan time).
 - **Execution** — one-file runtime, demo store, test page, 53 automated tests (39 unit + 14 E2E), Makefile CI.
 - **Potential Impact** — any existing site becomes agent-ready with one script tag.
 - **Creativity & Ambition** — semantic refs, human-in-the-loop safety, agent interoperability.
+
+## Publishing to npm (`@willh/agentready`)
+
+The release workflow publishes on `v*` tags: build → typecheck/unit/E2E gates → GitHub Release → npm with provenance. One-time setup:
+
+1. Confirm the npm scope: if `willh` is your npm username, `@willh` works automatically; otherwise create the `willh` org on npmjs.com (Settings → Organizations) and ensure the publishing account is a member.
+2. `npm login` in the account that will publish; create an automation token (`npm token create`).
+3. Add the token as the `NPM_TOKEN` secret on the GitHub repo (Settings → Secrets and variables → Actions).
+4. Tag: `make release-tag TAG=v0.1.1` — the workflow builds, tests, GitHub-Releases, then npm-publishes.
+5. After publish: verify `https://www.npmjs.com/package/@willh/agentready` and that jsdelivr resolves the new version.
