@@ -119,4 +119,4 @@ Releases are automated via GitHub Actions:
    - Run typecheck, unit and E2E tests, and build both unminified/minified bundles.
    - Generate release notes from commits.
    - Publish the release on GitHub with `agentready.js`, `agentready.min.js`, and `agentready-types.tar.gz` attached.
-   - Publish `@willh/agentready` to npm with provenance (requires the `NPM_TOKEN` secret — see `docs/SUBMISSION.md`).
+   - Publish `@willh/agentready` to npm with provenance (publishes via npm trusted publishing (OIDC) — no token secret; see `docs/SUBMISSION.md`).
