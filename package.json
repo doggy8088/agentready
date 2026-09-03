@@ -1,6 +1,6 @@
 {
   "name": "@willh/agentready",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One JavaScript file that makes any website agent-ready: semantic HTML, forms, navigation and app state become safe, structured WebMCP tools.",
   "type": "module",
   "packageManager": "bun@1.3.13",
