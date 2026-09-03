@@ -8,3 +8,4 @@ dist/*.d.ts
 dist/tools/
 test-results/
 playwright-report/
+output/

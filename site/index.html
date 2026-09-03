@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentReady.js — One script tag. Your website is agent-ready.</title>
+  <meta name="description" content="AgentReady.js turns the semantic HTML you already ship — forms, navigation, buttons, app state — into safe, structured WebMCP tools for ChatGPT, Chrome 149+ and in-page agents. One script tag, zero dependencies, MIT." />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#0c0e11" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f6f6f2" media="(prefers-color-scheme: light)" />
+  <link rel="canonical" href="https://agentready.gh.miniasp.com/" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="AgentReady.js" />
+  <meta property="og:title" content="AgentReady.js — One script tag. Your website is agent-ready." />
+  <meta property="og:description" content="Semantic HTML becomes safe, structured WebMCP tools for ChatGPT, Chrome 149+ and in-page agents. Zero dependencies. MIT." />
+  <meta property="og:url" content="https://agentready.gh.miniasp.com/" />
+  <meta property="og:image" content="https://agentready.gh.miniasp.com/assets/og-card.png" />
+  <meta property="og:image:secure_url" content="https://agentready.gh.miniasp.com/assets/og-card.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="AgentReady.js: add one script tag and your website becomes agent-ready. A single green status light on a dark panel." />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AgentReady.js — One script tag. Your website is agent-ready." />
+  <meta name="twitter:description" content="Semantic HTML becomes safe, structured WebMCP tools for ChatGPT, Chrome 149+ and in-page agents. Zero dependencies. MIT." />
+  <meta name="twitter:image" content="https://agentready.gh.miniasp.com/assets/og-card.png" />
+  <meta name="twitter:image:alt" content="AgentReady.js: add one script tag and your website becomes agent-ready. A single green status light on a dark panel." />
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="icon" href="favicon-16.png" type="image/png" sizes="16x16" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
+  <link rel="manifest" href="site.webmanifest" />
+
+  <script>
+    // Theme before first paint: known stored value → system preference → dark.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('agentready-theme'); } catch (e) { /* storage unavailable */ }
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AgentReady.js",
+    "description": "A progressive-enhancement JavaScript layer that turns a website's semantic HTML into safe, structured WebMCP tools for AI agents.",
+    "url": "https://agentready.gh.miniasp.com/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Web browser",
+    "softwareVersion": "0.1.2",
+    "inLanguage": "en",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Will Huang", "url": "https://github.com/doggy8088" },
+    "codeRepository": "https://github.com/doggy8088/agentready",
+    "downloadUrl": "https://www.npmjs.com/package/@willh/agentready"
+  }
+  </script>
+
+  <!-- This page runs AgentReady.js itself. Open the badge in the corner. -->
+  <script>window.AgentReadyConfig = { siteName: 'AgentReady.js' };</script>
+  <script src="https://cdn.jsdelivr.net/npm/@willh/agentready@0.1.2/dist/agentready.min.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="brand" href="./" aria-label="AgentReady.js home">
+        <svg class="mark" width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="2" y="2" width="28" height="28" rx="8" fill="currentColor" opacity=".12"/>
+          <path d="M9 21.5 16 9l7 12.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="16" cy="21.5" r="2.6" fill="var(--accent)"/>
+        </svg>
+        <span>AgentReady<span class="brand-dim">.js</span></span>
+      </a>
+      <nav class="top-nav" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#tools">Tools</a>
+        <a href="#safety">Safety</a>
+        <a href="#live">Live</a>
+        <a href="#start">Get started</a>
+      </nav>
+      <div class="top-actions">
+        <a class="btn btn-ghost btn-sm" href="https://github.com/doggy8088/agentready" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span>GitHub</span>
+        </a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme" aria-pressed="false">
+          <svg class="ico-sun" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg class="ico-moon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow mono"><span class="dot"></span>v0.1.2 · MIT · WebMCP Challenge 2026</p>
+          <h1>Add one script tag.<br />Your website is <em>agent-ready.</em></h1>
+          <p class="lede">
+            AgentReady.js reads the semantic HTML you already ship — forms, navigation, buttons, app state —
+            and turns it into safe, structured <a href="https://webmachinelearning.github.io/webmcp/" rel="noopener">WebMCP</a> tools.
+            Humans keep the same interface. Agents get a reliable one.
+          </p>
+          <div class="snippet" data-copy-group>
+            <pre class="mono"><code id="hero-snippet">&lt;script src="https://cdn.jsdelivr.net/npm/@willh/agentready@0.1.2/dist/agentready.min.js" defer&gt;&lt;/script&gt;</code></pre>
+            <button class="copy" type="button" data-copy="#hero-snippet" aria-label="Copy script tag">Copy</button>
+          </div>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="demo/store/">Open the live demo</a>
+            <a class="btn btn-ghost" href="https://github.com/doggy8088/agentready#readme" rel="noopener">Read the docs</a>
+          </div>
+        </div>
+
+        <!-- Synthesis panel: real markup in, real tool out -->
+        <figure class="synth" aria-label="A plain HTML search form on the left becomes a typed WebMCP tool on the right">
+          <div class="pane pane-html">
+            <div class="pane-head mono"><span>index.html</span><span class="pane-tag">what you ship</span></div>
+<pre class="mono"><code><span class="t">&lt;form</span> <span class="a">aria-label</span>=<span class="s">"Product search"</span> <span class="a">method</span>=<span class="s">"get"</span><span class="t">&gt;</span>
+  <span class="t">&lt;label</span> <span class="a">for</span>=<span class="s">"q"</span><span class="t">&gt;</span>Search products<span class="t">&lt;/label&gt;</span>
+  <span class="t">&lt;input</span> <span class="a">id</span>=<span class="s">"q"</span> <span class="a">name</span>=<span class="s">"q"</span> <span class="a">type</span>=<span class="s">"search"</span><span class="t">&gt;</span>
+  <span class="t">&lt;label</span> <span class="a">for</span>=<span class="s">"category"</span><span class="t">&gt;</span>Category<span class="t">&lt;/label&gt;</span>
+  <span class="t">&lt;select</span> <span class="a">id</span>=<span class="s">"category"</span> <span class="a">name</span>=<span class="s">"category"</span><span class="t">&gt;</span>
+    <span class="t">&lt;option&gt;</span>Keyboards<span class="t">&lt;/option&gt;</span>
+    <span class="t">&lt;option&gt;</span>Mice<span class="t">&lt;/option&gt;</span>
+  <span class="t">&lt;/select&gt;</span>
+  <span class="t">&lt;label</span> <span class="a">for</span>=<span class="s">"max_price"</span><span class="t">&gt;</span>Max price<span class="t">&lt;/label&gt;</span>
+  <span class="t">&lt;input</span> <span class="a">id</span>=<span class="s">"max_price"</span> <span class="a">name</span>=<span class="s">"max_price"</span>
+         <span class="a">type</span>=<span class="s">"number"</span> <span class="a">min</span>=<span class="s">"0"</span> <span class="a">max</span>=<span class="s">"2000"</span><span class="t">&gt;</span>
+  <span class="t">&lt;button&gt;</span>Search<span class="t">&lt;/button&gt;</span>
+<span class="t">&lt;/form&gt;</span></code></pre>
+          </div>
+          <div class="synth-arrow" aria-hidden="true">
+            <span class="arrow-label mono">agentready.js</span>
+            <svg width="40" height="40" viewBox="0 0 40 40"><path d="M6 20h26M24 12l8 8-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="pane pane-json">
+            <div class="pane-head mono"><span>document.modelContext</span><span class="pane-tag pane-tag-accent">what agents get</span></div>
+<pre class="mono"><code>{
+  <span class="k">"name"</span>: <span class="s">"search_products"</span>,
+  <span class="k">"title"</span>: <span class="s">"Product search"</span>,
+  <span class="k">"inputSchema"</span>: {
+    <span class="k">"type"</span>: <span class="s">"object"</span>,
+    <span class="k">"properties"</span>: {
+      <span class="k">"q"</span>:         { <span class="k">"type"</span>: <span class="s">"string"</span> },
+      <span class="k">"category"</span>:  { <span class="k">"type"</span>: <span class="s">"string"</span>,
+                     <span class="k">"enum"</span>: [<span class="s">"Keyboards"</span>, <span class="s">"Mice"</span>] },
+      <span class="k">"max_price"</span>: { <span class="k">"type"</span>: <span class="s">"number"</span>,
+                     <span class="k">"minimum"</span>: <span class="n">0</span>, <span class="k">"maximum"</span>: <span class="n">2000</span> }
+    }
+  },
+  <span class="k">"annotations"</span>: { <span class="k">"untrustedContentHint"</span>: <span class="n">true</span> }
+}</code></pre>
+          </div>
+        </figure>
+      </div>
+
+      <ul class="facts wrap mono" aria-label="Key facts">
+        <li><strong>37 KB</strong> minified, 13 KB gzipped</li>
+        <li><strong>0</strong> runtime dependencies</li>
+        <li><strong>7</strong> core tools + synthesized form tools</li>
+        <li><strong>108</strong> automated tests, real Chrome E2E</li>
+        <li><strong>MIT</strong> licensed</li>
+      </ul>
+    </section>
+
+    <!-- ============ WHY ============ -->
+    <section class="section why" id="why">
+      <div class="wrap grid-2">
+        <div>
+          <p class="kicker mono">The problem</p>
+          <h2>Agents shouldn't have to guess.</h2>
+        </div>
+        <div class="prose">
+          <p>
+            Today an agent driving a website works from screenshots or a dumped DOM tree. It is slow,
+            brittle, and expensive, and it still can't tell a search box from a newsletter signup.
+          </p>
+          <p>
+            WebMCP fixes this by letting a site <em>declare</em> its capabilities through
+            <code>document.modelContext</code>. But nobody is going to rewrite millions of existing
+            websites by hand.
+          </p>
+          <p>
+            AgentReady.js derives the tool layer from what is already there. Semantic HTML, labels, and
+            ARIA attributes carry almost all the structure an agent needs. Ship them, and the tools follow.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW ============ -->
+    <section class="section how" id="how">
+      <div class="wrap">
+        <p class="kicker mono">How it works</p>
+        <h2>Three passes, on every page load and every DOM change.</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-n mono">01</span>
+            <h3>Discover</h3>
+            <p>Walks the DOM for interactive elements, forms, headings and regions. Every target gets a stable ref held behind a <code>WeakRef</code>, so SPA re-renders never leak or go stale.</p>
+          </li>
+          <li>
+            <span class="step-n mono">02</span>
+            <h3>Synthesize</h3>
+            <p>Each semantic form becomes one typed tool with a real JSON Schema, named from <code>aria-label</code>, headings or the action URL. A search form becomes <code>search_products</code>, not twenty <code>set_input_17</code> primitives.</p>
+          </li>
+          <li>
+            <span class="step-n mono">03</span>
+            <h3>Expose</h3>
+            <p>Tools are registered through native WebMCP when the browser has it, with an identical in-page <code>getTools()</code> / <code>executeTool()</code> shim when it doesn't. Same page, any agent.</p>
+          </li>
+        </ol>
+
+        <div class="flow" aria-hidden="true">
+          <span class="flow-node">Human</span>
+          <span class="flow-line"></span>
+          <span class="flow-node">Website</span>
+          <span class="flow-line"></span>
+          <span class="flow-node flow-node-accent">AgentReady.js</span>
+          <span class="flow-line"></span>
+          <span class="flow-node">document.modelContext</span>
+          <span class="flow-line"></span>
+          <span class="flow-node">ChatGPT · Chrome 149+ · in-page agents</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TOOLS ============ -->
+    <section class="section tools" id="tools">
+      <div class="wrap">
+        <div class="grid-2 section-head">
+          <div>
+            <p class="kicker mono">Tools</p>
+            <h2>Seven core tools. Plus one per form.</h2>
+          </div>
+          <p class="prose">
+            Read tools are annotated <code>readOnlyHint</code>. Everything carries
+            <code>untrustedContentHint</code>. Output is clamped to about 1,500 characters per call so a
+            large table can never flood an agent's context.
+          </p>
+        </div>
+
+        <div class="table-scroll">
+          <table class="tool-table">
+            <thead>
+              <tr><th scope="col">Tool</th><th scope="col">Type</th><th scope="col">What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>get_page_context</code></td><td><span class="badge b-read">read</span></td><td>Semantic summary: title, headings, regions, forms, counts</td></tr>
+              <tr><td><code>find_on_page</code></td><td><span class="badge b-read">read</span></td><td>Natural-language search over interactive elements, returns stable refs</td></tr>
+              <tr><td><code>read_target</code></td><td><span class="badge b-read">read</span></td><td>Details of one ref: value, options, href, surrounding content</td></tr>
+              <tr><td><code>activate_target</code></td><td><span class="badge b-write">write</span></td><td>Click buttons, links, tabs. Destructive ones require human approval</td></tr>
+              <tr><td><code>set_field</code></td><td><span class="badge b-write">write</span></td><td>Set one input, select, checkbox or radio, firing real <code>input</code> and <code>change</code> events</td></tr>
+              <tr><td><code>fill_form</code></td><td><span class="badge b-write">write</span></td><td>Fill a whole form by label. Never submits</td></tr>
+              <tr><td><code>submit_form</code></td><td><span class="badge b-gate">approval</span></td><td>Submit with explicit human approval in the on-page panel</td></tr>
+              <tr class="row-synth"><td><code>search_products</code>, <code>signup_form</code>, …</td><td><span class="badge b-auto">auto</span></td><td>One synthesized tool per semantic form, with a real JSON Schema. Up to eight per page</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LEVELS ============ -->
+    <section class="section levels" id="levels">
+      <div class="wrap">
+        <p class="kicker mono">Progressive enhancement</p>
+        <h2>Start with nothing. Add precision when you want it.</h2>
+
+        <div class="tabs" data-tabs>
+          <div class="tab-list" role="tablist" aria-label="Integration levels">
+            <button role="tab" id="tab-l0" aria-selected="true" aria-controls="panel-l0" type="button"><span class="mono">Level 0</span> One script tag</button>
+            <button role="tab" id="tab-l1" aria-selected="false" aria-controls="panel-l1" tabindex="-1" type="button"><span class="mono">Level 1</span> HTML metadata</button>
+            <button role="tab" id="tab-l2" aria-selected="false" aria-controls="panel-l2" tabindex="-1" type="button"><span class="mono">Level 2</span> Native registration</button>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-l0" aria-labelledby="tab-l0">
+            <div class="level-grid">
+              <div class="prose">
+                <h3>Do nothing else.</h3>
+                <p>Load the script. AgentReady discovers the page and registers the seven core tools plus one synthesized tool per semantic form. Names, descriptions and schemas are derived from labels, headings and action URLs.</p>
+                <p class="muted">Works on the deployed page and on <code>localhost</code>. The inspector badge appears bottom-right.</p>
+              </div>
+              <div class="code" data-copy-group>
+<pre class="mono"><code id="code-l0"><span class="t">&lt;script</span>
+  <span class="a">src</span>=<span class="s">"https://cdn.jsdelivr.net/npm/@willh/agentready@0.1.2/dist/agentready.min.js"</span>
+  <span class="a">defer</span><span class="t">&gt;&lt;/script&gt;</span></code></pre>
+                <button class="copy" type="button" data-copy="#code-l0" aria-label="Copy Level 0 example">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-l1" aria-labelledby="tab-l1" hidden>
+            <div class="level-grid">
+              <div class="prose">
+                <h3>Name it yourself.</h3>
+                <p>A handful of <code>data-agent-*</code> attributes give you exact tool names, descriptions and submit policies without touching JavaScript.</p>
+                <ul class="attr-list mono">
+                  <li><code>data-agent-name</code><span>tool name</span></li>
+                  <li><code>data-agent-description</code><span>tool description</span></li>
+                  <li><code>data-agent-submit</code><span>auto · confirm · never</span></li>
+                  <li><code>data-agent-hide</code><span>exclude a field entirely</span></li>
+                  <li><code>data-agent-priority</code><span>synthesize this form first</span></li>
+                </ul>
+              </div>
+              <div class="code" data-copy-group>
+<pre class="mono"><code id="code-l1"><span class="t">&lt;form</span>
+  <span class="a">method</span>=<span class="s">"get"</span>
+  <span class="a">aria-label</span>=<span class="s">"Product search"</span>
+  <span class="a">data-agent-name</span>=<span class="s">"search_products"</span>
+  <span class="a">data-agent-description</span>=<span class="s">"Search products in the catalog"</span>
+  <span class="a">data-agent-submit</span>=<span class="s">"auto"</span><span class="t">&gt;</span>
+  <span class="t">&lt;input</span> <span class="a">name</span>=<span class="s">"q"</span> <span class="a">type</span>=<span class="s">"search"</span> <span class="a">placeholder</span>=<span class="s">"Search…"</span> <span class="t">/&gt;</span>
+  <span class="t">&lt;select</span> <span class="a">name</span>=<span class="s">"category"</span><span class="t">&gt;</span>…<span class="t">&lt;/select&gt;</span>
+  <span class="t">&lt;button&gt;</span>Search<span class="t">&lt;/button&gt;</span>
+<span class="t">&lt;/form&gt;</span></code></pre>
+                <button class="copy" type="button" data-copy="#code-l1" aria-label="Copy Level 1 example">Copy</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel" role="tabpanel" id="panel-l2" aria-labelledby="tab-l2" hidden>
+            <div class="level-grid">
+              <div class="prose">
+                <h3>Bring your own logic.</h3>
+                <p>Register domain tools with <code>AgentReady.register()</code>. They ride the same runtime, the same safety policy and the same inspector as everything else.</p>
+                <p class="muted"><code>window.AgentReady</code> also exposes <code>getTools()</code>, <code>executeTool()</code> and <code>inspect()</code>, the same shapes as the WebMCP standard API, so in-page agents work on every browser.</p>
+              </div>
+              <div class="code" data-copy-group>
+<pre class="mono"><code id="code-l2"><span class="c">// after DOMContentLoaded</span>
+window.AgentReady.register({
+  name: <span class="s">'add_to_cart'</span>,
+  description: <span class="s">'Add a product to the shopping cart'</span>,
+  inputSchema: {
+    type: <span class="s">'object'</span>,
+    properties: {
+      productId: { type: <span class="s">'string'</span> },
+      quantity:  { type: <span class="s">'number'</span> },
+    },
+    required: [<span class="s">'productId'</span>],
+  },
+  execute: ({ productId, quantity }) =&gt;
+    cart.add(productId, quantity ?? <span class="n">1</span>),
+});</code></pre>
+                <button class="copy" type="button" data-copy="#code-l2" aria-label="Copy Level 2 example">Copy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SAFETY ============ -->
+    <section class="section safety" id="safety">
+      <div class="wrap">
+        <div class="grid-2 section-head">
+          <div>
+            <p class="kicker mono">Safety model</p>
+            <h2>Untrusted by default. Fail closed.</h2>
+          </div>
+          <p class="prose">
+            Everything on the page, and everything an agent might do, is treated as untrusted. Sensitive
+            fields are excluded from schemas <em>and</em> discovery, so agents never learn they exist.
+            Consequential actions pause for a human. Turn the inspector off, and gated actions are declined, not waved through.
+          </p>
+        </div>
+
+        <ul class="policy">
+          <li class="p-allow">
+            <span class="p-mark" aria-hidden="true"></span>
+            <div>
+              <h3>Allowed</h3>
+              <p>Reading page content, search, navigation. Filling ordinary form fields.</p>
+            </div>
+          </li>
+          <li class="p-gate">
+            <span class="p-mark" aria-hidden="true"></span>
+            <div>
+              <h3>Human approval</h3>
+              <p>Form submission, checkout, and delete- or purchase-style buttons. An Approve / Decline dialog opens on the page.</p>
+            </div>
+          </li>
+          <li class="p-never">
+            <span class="p-mark" aria-hidden="true"></span>
+            <div>
+              <h3>Never</h3>
+              <p>Hidden inputs, tokens, passwords, card fields (<code>cc-*</code>, CVV). Not exposed, not filled, values redacted. Arbitrary JavaScript is never offered.</p>
+            </div>
+          </li>
+        </ul>
+
+        <div class="inspector-note">
+          <div class="prose">
+            <h3>The inspector shows the receipts.</h3>
+            <p>A small badge shows the live tool count. Open it for every agent action with its arguments and timing. Targets highlight as the agent touches them, and consequential calls wait on the Approve / Decline dialog.</p>
+          </div>
+<div class="code"><pre class="mono"><code>window.AgentReadyConfig = {
+  inspector: <span class="n">true</span>,      <span class="c">// badge, activity, approvals</span>
+  siteName: <span class="s">'My Store'</span>, <span class="c">// badge label</span>
+  maxResults: <span class="n">8</span>,        <span class="c">// find_on_page result cap</span>
+};</code></pre></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LIVE ============ -->
+    <section class="section live" id="live">
+      <div class="wrap">
+        <div class="grid-2 section-head">
+          <div>
+            <p class="kicker mono">Live on this page</p>
+            <h2>This site runs AgentReady.js too.</h2>
+          </div>
+          <p class="prose">
+            The list below is not a mock. It is read from <code>window.AgentReady.getTools()</code> on
+            this very page: the seven core tools plus two Level 2 tools this site registers itself. Open the badge in the corner and run one.
+          </p>
+        </div>
+
+        <div class="live-grid">
+          <div class="live-card">
+            <div class="pane-head mono"><span>AgentReady.getTools()</span><span class="pane-tag" id="live-transport">loading…</span></div>
+            <ol class="live-tools mono" id="live-tools" aria-live="polite">
+              <li class="live-empty">Waiting for agentready.min.js…</li>
+            </ol>
+          </div>
+          <div class="live-card">
+            <div class="pane-head mono">
+              <span>executeTool</span>
+              <div class="live-actions">
+                <button class="btn btn-sm btn-ghost" type="button" data-run="get_page_context" data-args="{}">get_page_context</button>
+                <button class="btn btn-sm btn-ghost" type="button" data-run="find_on_page" data-args='{"query":"copy script tag"}'>find_on_page</button>
+              </div>
+            </div>
+            <pre class="mono live-out" id="live-out" tabindex="0"><code>Pick a read-only tool above. Output is clamped to ~1,500 characters, exactly as an agent would see it.</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPAT BAND ============ -->
+    <section class="section band" id="compat">
+      <div class="wrap band-grid">
+        <div class="band-copy">
+          <p class="kicker mono">Runs where agents run</p>
+          <h2>Native WebMCP when it's there. An identical shim when it isn't.</h2>
+          <ul class="compat">
+            <li><strong>ChatGPT desktop app</strong><span>In-app browser, register-only client. Detected automatically.</span></li>
+            <li><strong>Chrome 149+</strong><span>Enable <code>chrome://flags/#enable-webmcp-testing</code>, restart, done.</span></li>
+            <li><strong>Firefox</strong><span>Detects <code>navigator.modelContext</code>.</span></li>
+            <li><strong>Everything else</strong><span>In-page shim with the same <code>getTools</code> / <code>executeTool</code> shape. Handy on <code>localhost</code>.</span></li>
+          </ul>
+        </div>
+        <picture class="band-art">
+          <img src="assets/img/ready-light.jpg" width="1536" height="1024" alt="A single green status light glowing on a dark brushed-metal panel" loading="lazy" decoding="async" />
+        </picture>
+      </div>
+    </section>
+
+    <!-- ============ GET STARTED ============ -->
+    <section class="section start" id="start">
+      <div class="wrap">
+        <p class="kicker mono">Get started</p>
+        <h2>Two ways in. Both take a minute.</h2>
+        <div class="start-grid">
+          <div class="start-card">
+            <h3>CDN</h3>
+            <p class="muted">Pin a version in production. Drop <code>@0.1.2</code> for <code>@latest</code> while exploring.</p>
+            <div class="code" data-copy-group>
+<pre class="mono"><code id="code-cdn"><span class="t">&lt;script</span>
+  <span class="a">src</span>=<span class="s">"https://cdn.jsdelivr.net/npm/@willh/agentready@0.1.2/dist/agentready.min.js"</span>
+  <span class="a">defer</span><span class="t">&gt;&lt;/script&gt;</span></code></pre>
+              <button class="copy" type="button" data-copy="#code-cdn" aria-label="Copy CDN script tag">Copy</button>
+            </div>
+          </div>
+          <div class="start-card">
+            <h3>npm</h3>
+            <p class="muted">Serve <code>dist/agentready.js</code> from the package, or import the types for Level 2 tools.</p>
+            <div class="code" data-copy-group>
+<pre class="mono"><code id="code-npm">npm install @willh/agentready</code></pre>
+              <button class="copy" type="button" data-copy="#code-npm" aria-label="Copy npm install command">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <ul class="links">
+          <li><a href="demo/store/">Live demo store <span class="muted">a deliberately ordinary storefront</span></a></li>
+          <li><a href="https://github.com/doggy8088/agentready" rel="noopener">Source on GitHub <span class="muted">issues, contributing, E2E suite</span></a></li>
+          <li><a href="https://www.npmjs.com/package/@willh/agentready" rel="noopener">@willh/agentready on npm <span class="muted">provenance-signed releases</span></a></li>
+          <li><a href="https://webmachinelearning.github.io/webmcp/" rel="noopener">WebMCP specification <span class="muted">W3C Web Machine Learning CG</span></a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <p>© 2026 Will Huang · <a href="https://github.com/doggy8088/agentready/blob/main/LICENSE" rel="noopener">MIT License</a></p>
+      <p class="muted">Built for the WebMCP Challenge, September 2026. No analytics, no cookies, no tracking.</p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

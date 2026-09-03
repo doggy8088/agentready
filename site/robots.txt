@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://agentready.gh.miniasp.com/sitemap.xml

@@ -209,6 +209,15 @@ tests/                bun:test unit + Playwright E2E
 - Without the native API, AgentReady runs its in-page shim: all tools still work through
   `window.AgentReady` — useful for local dev (`http://localhost`) and non-WebMCP browsers.
 
+### Website
+
+The landing page lives in [`site/`](./site/) (plain HTML/CSS/JS, no build step) and is published
+to **https://agentready.gh.miniasp.com/** by `.github/workflows/pages.yml` on every push to `main`
+that touches `site/`, `demo/` or `src/`. The workflow assembles `site/` + `demo/store/` +
+`demo/test-page/` into one GitHub Pages artifact, so the demo is reachable at `/demo/store/`.
+Preview locally with `make demo` → `http://localhost:8788/site/` (the `demo/store/` link only
+resolves on the deployed site).
+
 ### Deploying the demo
 
 `demo/store/` is self-contained (bundle copied to `vendor/agentready.js` at build time) —
