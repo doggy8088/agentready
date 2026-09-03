@@ -7,6 +7,7 @@
       "!build",
       "!demo/store/vendor",
       "!demo/**/*.js",
+      "!site",
       "!video",
       "!.agents",
       "!**/*.html",
