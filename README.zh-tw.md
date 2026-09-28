@@ -145,6 +145,45 @@ window.AgentReadyConfig = {
 };
 ```
 
+### 隱藏或自訂 Inspector
+
+Inspector 徽章預設為開啟（`inspector: true`）。依據你的使用情境，有三種隱藏或調整的方式：
+
+1. **完全停用 Inspector UI（透過全域設定）：**
+   ```html
+   <script>
+     window.AgentReadyConfig = {
+       inspector: false, // 停用徽章、活動紀錄與確認對話框
+     };
+   </script>
+   <script src="agentready.js" defer></script>
+   ```
+   > **注意：** AgentReady 採用 fail-closed（預設安全拒絕）模型。若將 `inspector` 設為 `false`，任何需要人類核准的操作（例如送出表單、結帳）將會**自動拒絕**，因為畫面上沒有對話框供使用者點選核准。
+
+2. **透過 CSS 隱藏整個 UI：**
+   Inspector 的 host 元素帶有 `data-agentready-ui` 屬性，可在全域 CSS 中直接隱藏：
+   ```css
+   div[data-agentready-ui] {
+     display: none !important;
+   }
+   ```
+   *（注意：這會讓審核彈出視窗也一併隱藏在畫面之外）。*
+
+3. **僅隱藏右下角徽章（保留人類審核確認對話框）：**
+   由於 Inspector UI 使用開放式 Shadow DOM（`mode: 'open'`），你可以僅針對 `.badge` 元素隱藏，同時保留 **Approve / Decline** 確認對話框的正常運作：
+   ```html
+   <script>
+     window.addEventListener('DOMContentLoaded', () => {
+       const host = document.querySelector('div[data-agentready-ui]');
+       if (host?.shadowRoot) {
+         const style = document.createElement('style');
+         style.textContent = '.badge { display: none !important; }';
+         host.shadowRoot.appendChild(style);
+       }
+     });
+   </script>
+   ```
+
 ---
 
 ## 開發

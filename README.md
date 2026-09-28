@@ -157,6 +157,45 @@ window.AgentReadyConfig = {
 };
 ```
 
+### Hiding or customizing the inspector
+
+The inspector badge is enabled by default (`inspector: true`). Depending on your needs, you can hide or customize it:
+
+1. **Completely disable the inspector UI (Configuration):**
+   ```html
+   <script>
+     window.AgentReadyConfig = {
+       inspector: false, // Disables badge, activity feed, and approval dialogs
+     };
+   </script>
+   <script src="agentready.js" defer></script>
+   ```
+   > **Note:** AgentReady uses a fail-closed safety model. If `inspector` is set to `false`, any consequential actions requiring human confirmation (e.g., checkout, form submission) are **automatically declined** because there is no dialog UI for human approval.
+
+2. **Hide the entire UI with CSS:**
+   The inspector host element has a `data-agentready-ui` attribute. You can hide it via global CSS:
+   ```css
+   div[data-agentready-ui] {
+     display: none !important;
+   }
+   ```
+   *(Note: This keeps the inspector logic running, but approval popups will also be visually hidden).*
+
+3. **Hide ONLY the badge (keeping human confirmation dialogs active):**
+   Because the inspector UI uses an open Shadow DOM (`mode: 'open'`), you can hide just the floating `.badge` while keeping the **Approve / Decline** modal functional when an agent requests a sensitive action:
+   ```html
+   <script>
+     window.addEventListener('DOMContentLoaded', () => {
+       const host = document.querySelector('div[data-agentready-ui]');
+       if (host?.shadowRoot) {
+         const style = document.createElement('style');
+         style.textContent = '.badge { display: none !important; }';
+         host.shadowRoot.appendChild(style);
+       }
+     });
+   </script>
+   ```
+
 ---
 
 ## Development
