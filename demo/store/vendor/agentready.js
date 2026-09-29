@@ -1687,7 +1687,7 @@
   }
 
   // build/src/index.js
-  var VERSION = "0.1.0";
+  var VERSION = "0.1.3";
   var trackedControllers = new Set;
   var track = (c) => {
     trackedControllers.add(c);

@@ -17,7 +17,7 @@ import { synthesizeFormTools } from './tools/forms.js';
 import { activateTargetTool, fieldLabel, fillFormTool, setFieldTool, submitFormTool } from './tools/interact.js';
 import { findTool, pageContextTool, readTargetTool } from './tools/page.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.3';
 
 /** Controllers for every tool registration (core per-tool + form batches). */
 const trackedControllers = new Set<AbortController>();
