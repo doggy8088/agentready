@@ -399,3 +399,58 @@ describe('shadow discovery spike (flag on)', () => {
     expect(spikeErrors).toEqual([]);
   }, 30000);
 });
+
+// The test page loads the published CDN build; the store loads the local bundle,
+// so content-search coverage of *this* change lives here.
+describe('find_on_page content search (local bundle, store page)', () => {
+  let store: Page;
+
+  beforeAll(async () => {
+    store = await context.newPage();
+    await store.goto(server.baseUrl + STORE_PAGE);
+    await store.waitForFunction(
+      () => (window as unknown as { AgentReady?: unknown }).AgentReady !== undefined,
+      undefined,
+      {
+        timeout: 10000,
+      },
+    );
+  }, 30000);
+
+  afterAll(async () => {
+    await store?.close();
+  });
+
+  type Found = { results: Array<{ ref: string; role: string; name?: string; text?: string; section?: string }> };
+  const find = async (query: string, kind?: string): Promise<Found> =>
+    JSON.parse((await agent.executeTool(store, 'find_on_page', { query, kind })) as string) as Found;
+
+  it('finds plain page text that is not an interactive element', async () => {
+    const out = await find('deliberately ordinary storefront');
+    expect(out.results[0]!.role).toBe('text');
+    expect(out.results[0]!.text).toContain('ordinary storefront');
+  }, 30000);
+
+  it('finds CJK text and CJK button names, and refuses to activate a text ref', async () => {
+    await store.evaluate(() => {
+      const box = document.createElement('section');
+      box.id = 'e2e-content-probe';
+      box.innerHTML =
+        '<h2>保固說明</h2><p>本產品提供三年保固,支援 Thunderbolt 4。</p><button type="button">加入購物車</button>';
+      document.body.appendChild(box);
+    });
+    const text = await find('三年保固');
+    expect(text.results[0]!.role).toBe('text');
+    expect(text.results[0]!.text).toContain('三年保固');
+    expect(text.results[0]!.section).toBe('保固說明');
+    expect((await find('購物車')).results[0]!.name).toBe('加入購物車');
+    const refused = (await agent.executeTool(store, 'activate_target', { ref: text.results[0]!.ref })) as string;
+    expect(refused.startsWith('Refused:')).toBe(true);
+  }, 30000);
+
+  it('a miss returns valid JSON that tells the model what was searched', async () => {
+    const out = (await find('zzz-no-such-keyword')) as unknown as { results: unknown[]; hint: string };
+    expect(out.results).toEqual([]);
+    expect(out.hint).toContain('synonym');
+  }, 30000);
+});

@@ -156,6 +156,8 @@ export interface SemanticNode {
   href?: string;
   inputType?: string;
   options?: string[];
+  /** Full visible text (≤300 chars) when it says more than `name`; search-only, safe subset. */
+  text?: string;
   checked?: boolean;
   required?: boolean;
   field?: FieldClass;
@@ -212,6 +214,10 @@ export function describeNode(el: Element, doc: Document = el.ownerDocument): Sem
   }
   if (tag === 'input' && type === 'checkbox') node.checked = (el as HTMLInputElement).checked;
   if (el.hasAttribute('required')) node.required = true;
+  if (!isFieldTag && !el.querySelector('input, select, textarea, script, style, template')) {
+    const full = cleanText(el).slice(0, 300);
+    if (full && full !== name) node.text = full;
+  }
   if (isFieldTag) node.field = classifyField(el);
   else if (role === 'button' || tag === 'button' || tag === 'a') node.action = classifyAction(el);
   return node;
@@ -346,33 +352,362 @@ export function discover(doc: Document, opts: { deep?: boolean } = {}): Discover
   return { nodes, landmarks, headings, forms, title: doc.title, url: doc.URL };
 }
 
-/** Token-scored semantic match. kind narrows roles: action | field. */
-export function matchNodes(
-  query: string,
+/** True for elements `discover()` would index as interactive (buttons, links, fields, ARIA widgets). */
+export function isInteractive(el: Element): boolean {
+  return el.matches(INTERACTIVE_SELECTOR);
+}
+
+// ---------- page text (content) ----------
+
+export interface TextBlock {
+  el: Element;
+  text: string;
+  /** NFKC + lower-cased copy used for matching. */
+  folded: string;
+  /** Nearest preceding heading in document order. */
+  section: string;
+  tag: string;
+}
+
+export interface TextIndex {
+  blocks: TextBlock[];
+  /** True when the page was too large to scan completely. */
+  truncated: boolean;
+}
+
+const MAX_TEXT_VISITS = 8000;
+const MAX_TEXT_CHARS = 250_000;
+const MAX_BLOCK_CHARS = 4000;
+
+/** Subtrees never surfaced as page text: non-content, form controls (values), embedded documents. */
+const SKIP_TAGS = new Set(
+  'SCRIPT STYLE NOSCRIPT TEMPLATE TEXTAREA SELECT OPTION OPTGROUP INPUT DATALIST SVG CANVAS IFRAME OBJECT EMBED HEAD'.split(
+    ' ',
+  ),
+);
+
+const BLOCK_TAGS = new Set(
+  'ADDRESS ARTICLE ASIDE BLOCKQUOTE BODY BR CAPTION DD DETAILS DIV DL DT FIELDSET FIGCAPTION FIGURE FOOTER FORM H1 H2 H3 H4 H5 H6 HEADER HGROUP HR LEGEND LI MAIN NAV OL P PRE SECTION SUMMARY TABLE TBODY TD TFOOT TH THEAD TR UL'.split(
+    ' ',
+  ),
+);
+const BLOCK_SELECTOR = Array.from(BLOCK_TAGS, (t) => t.toLowerCase()).join(',');
+
+/**
+ * Elements whose text must never reach an agent: labels/hints attached to
+ * sensitive or data-agent-hide controls (their existence is hidden, not just
+ * their values — see README "Safety model").
+ */
+function suppressedFor(root: ParentNode, doc: Document): Set<Element> {
+  const out = new Set<Element>();
+  for (const c of Array.from(root.querySelectorAll('input, select, textarea'))) {
+    if (classifyField(c).level !== 'never' && !c.closest('[data-agent-hide]')) continue;
+    const wrap = c.closest('label');
+    if (wrap) out.add(wrap);
+    if (c.id) for (const l of Array.from(root.querySelectorAll(`label[for="${escapeCss(doc, c.id)}"]`))) out.add(l);
+    for (const attr of ['aria-labelledby', 'aria-describedby']) {
+      for (const id of (c.getAttribute(attr) ?? '').split(/\s+/)) {
+        const t = id ? doc.getElementById(id) : null;
+        if (t) out.add(t);
+      }
+    }
+  }
+  return out;
+}
+
+function isSkipped(el: Element, suppressed: Set<Element>): boolean {
+  return (
+    SKIP_TAGS.has(el.tagName.toUpperCase()) ||
+    suppressed.has(el) ||
+    el.hasAttribute('data-agent-hide') ||
+    el.hasAttribute('data-agentready-ui') ||
+    !isVisible(el)
+  );
+}
+
+/**
+ * Layout-aware boundary: CSS often turns <span>/<a> into blocks or flex items,
+ * and adjacent ones must not glue words together ("modelContext" + "what agents").
+ * 'block' starts a new text block; 'atomic' (inline-block/flex…) only needs a space.
+ */
+function boxOf(el: Element): 'block' | 'atomic' | 'inline' {
+  if (BLOCK_TAGS.has(el.tagName.toUpperCase())) return 'block';
+  const d = el.ownerDocument.defaultView?.getComputedStyle(el).display ?? '';
+  if (!d || d === 'inline' || d === 'contents' || d === 'none') return 'inline';
+  return d.startsWith('inline') ? 'atomic' : 'block';
+}
+
+function gatherText(node: Node, suppressed: Set<Element>, out: string[]): void {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === 3) out.push(child.nodeValue ?? '');
+    else if (child.nodeType === 1) {
+      const c = child as Element;
+      if (isSkipped(c, suppressed)) continue;
+      const gap = boxOf(c) !== 'inline';
+      if (gap) out.push(' ');
+      gatherText(c, suppressed, out);
+      if (gap) out.push(' ');
+    }
+  }
+}
+
+const squeeze = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
+/** Visible text of an element with hidden / sensitive / control content removed. Single choke point for read_target. */
+export function readableText(el: Element, max = 800): string {
+  if (el.closest('[data-agent-hide], [data-agentready-ui]')) return '';
+  const root = el.getRootNode() as ParentNode;
+  const parts: string[] = [];
+  gatherText(el, suppressedFor(root, el.ownerDocument), parts);
+  return squeeze(parts.join('')).slice(0, max);
+}
+
+/**
+ * Index the page's visible text as flat blocks (paragraphs, headings, cells,
+ * list items…), in document order. Opt-in walk used only by find_on_page.
+ * opts.deep mirrors discover(): also open shadow roots and same-origin iframes.
+ */
+export function collectTextBlocks(doc: Document, opts: { deep?: boolean } = {}): TextIndex {
+  const deep = opts.deep === true;
+  const blocks: TextBlock[] = [];
+  let visits = 0;
+  let chars = 0;
+  let truncated = false;
+  let section = '';
+
+  const push = (owner: Element, raw: string): void => {
+    let text = squeeze(raw);
+    while (text.length >= 2) {
+      let cut = text.length;
+      if (cut > MAX_BLOCK_CHARS) {
+        const ws = text.lastIndexOf(' ', MAX_BLOCK_CHARS);
+        cut = ws > MAX_BLOCK_CHARS / 2 ? ws : MAX_BLOCK_CHARS;
+      }
+      const chunk = text.slice(0, cut).trim();
+      if (chunk) {
+        blocks.push({ el: owner, text: chunk, folded: foldText(chunk), section, tag: owner.tagName.toLowerCase() });
+        chars += chunk.length;
+      }
+      text = text.slice(cut).trim();
+      if (chars > MAX_TEXT_CHARS) {
+        truncated = true;
+        return;
+      }
+    }
+  };
+
+  const flow = (owner: Element, parent: ParentNode, suppressed: Set<Element>): void => {
+    let buf: string[] = [];
+    const flush = (): void => {
+      if (buf.length) push(owner, buf.join(''));
+      buf = [];
+    };
+    for (const child of Array.from(parent.childNodes)) {
+      if (truncated) return;
+      if (child.nodeType === 3) {
+        buf.push(child.nodeValue ?? '');
+        continue;
+      }
+      if (child.nodeType !== 1) continue;
+      const c = child as Element;
+      if (++visits > MAX_TEXT_VISITS) {
+        truncated = true;
+        return;
+      }
+      const tag = c.tagName.toUpperCase();
+      if (deep && tag === 'IFRAME') {
+        flush();
+        try {
+          const d = (c as HTMLIFrameElement).contentDocument;
+          if (d?.body) flow(d.body, d.body, suppressedFor(d, d));
+        } catch {
+          /* cross-origin iframe: skip */
+        }
+        continue;
+      }
+      if (isSkipped(c, suppressed)) continue;
+      const box = boxOf(c);
+      if (box === 'block' || c.querySelector(BLOCK_SELECTOR)) {
+        flush();
+        if (/^H[1-6]$/.test(tag)) {
+          const parts: string[] = [];
+          gatherText(c, suppressed, parts);
+          section = squeeze(parts.join('')).slice(0, 80);
+        }
+        flow(c, c, suppressed);
+      } else {
+        if (box === 'atomic') buf.push(' ');
+        gatherText(c, suppressed, buf);
+        if (box === 'atomic') buf.push(' ');
+      }
+      if (deep && c.shadowRoot) {
+        flush();
+        flow(c, c.shadowRoot, suppressedFor(c.shadowRoot, doc));
+      }
+    }
+    flush();
+  };
+
+  const body = doc.body ?? doc.documentElement;
+  flow(body, body, suppressedFor(doc, doc));
+  return { blocks, truncated };
+}
+
+// ---------- matching ----------
+
+const CJK_RUN = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}]+/gu;
+const WORD_RE = /[\p{L}\p{N}$]+(?:-[\p{L}\p{N}]+)*/gu;
+const STOPWORDS = new Set(
+  'a an the to for of in on at and or is are with from by how what where when why which who does do did can could should i you it be there please'.split(
+    ' ',
+  ),
+);
+
+/** NFKC + lower-case: folds full-width forms and case so 「ＡＢＣ」 matches "abc". */
+export function foldText(s: string): string {
+  return s.normalize('NFKC').toLowerCase();
+}
+
+export interface ParsedQuery {
+  /** Space-delimited words (Latin, digits, …) with common stop-words removed. */
+  words: string[];
+  /** Runs of CJK characters — no word boundaries, matched as substrings. */
+  cjk: string[];
+  phrase: string;
+}
+
+export function parseQuery(query: string): ParsedQuery {
+  const phrase = foldText(query).replace(/\s+/g, ' ').trim();
+  const cjk = phrase.match(CJK_RUN) ?? [];
+  const all = phrase.replace(CJK_RUN, ' ').match(WORD_RE) ?? [];
+  // Stop-words and stray single letters ("take a minute") match nearly every label: pure noise.
+  const kept = all.filter((w) => !STOPWORDS.has(w));
+  const strong = kept.filter((w) => w.length > 1);
+  return { words: strong.length ? strong : kept.length ? kept : all, cjk, phrase };
+}
+
+export const queryTerms = (q: ParsedQuery): string[] => [...q.words, ...q.cjk];
+
+/** Crude suffix stripping so "warranties" finds "warranty" and "prices" finds "price". */
+function stem(t: string): string {
+  const s = t.replace(/(ies|ied|ing|ed|es|s|y)$/, '');
+  return s.length >= 4 ? s : t;
+}
+
+function wordHit(hay: string, t: string): number {
+  if (!hay) return 0;
+  if (hay.includes(t)) return 1;
+  if (t.includes('-')) {
+    const parts = t.split('-').filter(Boolean);
+    if (parts.length > 1 && parts.every((p) => hay.includes(p))) return 0.8;
+  }
+  const s = stem(t);
+  return s !== t && hay.includes(s) ? 0.7 : 0;
+}
+
+/** Exact substring, else partial credit when most character bigrams of a longer run appear. */
+function cjkHit(hay: string, run: string): number {
+  if (!hay) return 0;
+  if (hay.includes(run)) return 1;
+  if (run.length < 3) return 0;
+  const grams = run.length - 1;
+  let found = 0;
+  for (let i = 0; i < grams; i++) if (hay.includes(run.slice(i, i + 2))) found++;
+  return found / grams >= 0.5 ? (found / grams) * 0.7 : 0;
+}
+
+function scoreFields(
+  q: ParsedQuery,
+  fields: ReadonlyArray<readonly [string, number]>,
+): { score: number; matched: number; total: number } {
+  let score = 0;
+  let matched = 0;
+  const tally = (hit: (hay: string) => number): void => {
+    let s = 0;
+    for (const [hay, weight] of fields) s += weight * hit(hay);
+    if (s > 0) matched++;
+    score += s;
+  };
+  for (const w of q.words) tally((hay) => wordHit(hay, w));
+  for (const c of q.cjk) tally((hay) => cjkHit(hay, c));
+  return { score, matched, total: q.words.length + q.cjk.length };
+}
+
+export type FindKind = 'action' | 'field' | 'text';
+
+/** Score interactive nodes against a parsed query, best first. */
+export function scoreNodes(
+  q: ParsedQuery,
   nodes: SemanticNode[],
-  { kind, limit = 8 }: { kind?: 'action' | 'field'; limit?: number } = {},
-): SemanticNode[] {
-  const q = query.toLowerCase().replace(/[^\w\s$-]/g, ' ');
-  const terms = q.split(/\s+/).filter((t) => t.length > 1 || /^[\w$]$/.test(t));
-  if (!terms.length) return [];
+  kind?: FindKind,
+): Array<{ node: SemanticNode; score: number }> {
+  if (kind === 'text' || !queryTerms(q).length) return [];
   const scored: Array<{ node: SemanticNode; score: number }> = [];
   for (const n of nodes) {
     if (n.hiddenFromAgents) continue;
     if (kind === 'action' && !['button', 'link', 'tab', 'menuitem'].includes(n.role)) continue;
     if (kind === 'field' && !['textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'slider'].includes(n.role))
       continue;
-    let score = 0;
-    const nameL = n.name.toLowerCase();
-    const ctxL = (n.context ?? '').toLowerCase();
-    for (const t of terms) {
-      if (nameL.includes(t)) score += 6;
-      if (ctxL.includes(t)) score += 3;
-      if (n.role === 'button' && /click|press|tap|activate/.test(t)) score += 2;
-    }
-    if (nameL === q) score += 10;
-    if (nameL.startsWith(q)) score += 4;
+    const nameL = foldText(n.name);
+    const { score: base } = scoreFields(q, [
+      [nameL, 6],
+      [foldText(n.context ?? ''), 3],
+      [foldText(n.text ?? ''), 4],
+      [foldText(n.value ?? ''), 3],
+      [foldText((n.options ?? []).join(' ')), 2],
+      [foldText(n.href ?? ''), 2],
+    ]);
+    let score = base;
+    if (n.role === 'button') for (const w of q.words) if (/click|press|tap|activate/.test(w)) score += 2;
+    if (nameL === q.phrase) score += 10;
+    else if (nameL.startsWith(q.phrase)) score += 4;
     if (score > 0) scored.push({ node: n, score });
   }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((s) => s.node);
+  return scored.sort((a, b) => b.score - a.score);
+}
+
+export interface TextHit {
+  block: TextBlock;
+  score: number;
+  snippet: string;
+}
+
+function snippetOf(b: TextBlock, q: ParsedQuery): string {
+  // Offsets come from the folded copy; fall back to it when NFKC changed the length.
+  const text = b.folded.length === b.text.length ? b.text : b.folded;
+  if (text.length <= 160) return text;
+  let at = -1;
+  for (const t of queryTerms(q)) {
+    const i = b.folded.indexOf(t) >= 0 ? b.folded.indexOf(t) : b.folded.indexOf(stem(t));
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  const from = Math.max(0, at < 0 ? 0 : at - 60);
+  const to = Math.min(text.length, from + 160);
+  return `${from > 0 ? '…' : ''}${text.slice(from, to).trim()}${to < text.length ? '…' : ''}`;
+}
+
+/** Score page-text blocks against a parsed query, best first. Multi-term queries need ≥ half the terms. */
+export function scoreBlocks(q: ParsedQuery, blocks: TextBlock[]): TextHit[] {
+  if (!queryTerms(q).length) return [];
+  const hits: TextHit[] = [];
+  for (const b of blocks) {
+    const { score: base, matched, total } = scoreFields(q, [[b.folded, 5]]);
+    if (!matched || (total > 1 && matched < Math.ceil(total / 2))) continue;
+    let score = base;
+    if (q.phrase.length > 1 && b.folded.includes(q.phrase)) score += 6;
+    if (/^h[1-6]$/.test(b.tag)) score += 3;
+    hits.push({ block: b, score, snippet: snippetOf(b, q) });
+  }
+  return hits.sort((a, b) => b.score - a.score || a.block.text.length - b.block.text.length);
+}
+
+/** Token-scored semantic match over interactive nodes. kind narrows roles: action | field. */
+export function matchNodes(
+  query: string,
+  nodes: SemanticNode[],
+  { kind, limit = 8 }: { kind?: FindKind; limit?: number } = {},
+): SemanticNode[] {
+  return scoreNodes(parseQuery(query), nodes, kind)
+    .slice(0, limit)
+    .map((s) => s.node);
 }

@@ -634,6 +634,11 @@
       node.checked = el.checked;
     if (el.hasAttribute("required"))
       node.required = true;
+    if (!isFieldTag && !el.querySelector("input, select, textarea, script, style, template")) {
+      const full = cleanText(el).slice(0, 300);
+      if (full && full !== name)
+        node.text = full;
+    }
     if (isFieldTag)
       node.field = classifyField(el);
     else if (role === "button" || tag === "button" || tag === "a")
@@ -745,10 +750,225 @@
     const forms = collectForms(doc, deep).filter((f) => isVisible(f) && !f.closest("[data-agentready-ignore]"));
     return { nodes, landmarks, headings, forms, title: doc.title, url: doc.URL };
   }
-  function matchNodes(query, nodes, { kind, limit = 8 } = {}) {
-    const q = query.toLowerCase().replace(/[^\w\s$-]/g, " ");
-    const terms = q.split(/\s+/).filter((t) => t.length > 1 || /^[\w$]$/.test(t));
-    if (!terms.length)
+  function isInteractive(el) {
+    return el.matches(INTERACTIVE_SELECTOR);
+  }
+  var MAX_TEXT_VISITS = 8000;
+  var MAX_TEXT_CHARS = 250000;
+  var MAX_BLOCK_CHARS = 4000;
+  var SKIP_TAGS = new Set("SCRIPT STYLE NOSCRIPT TEMPLATE TEXTAREA SELECT OPTION OPTGROUP INPUT DATALIST SVG CANVAS IFRAME OBJECT EMBED HEAD".split(" "));
+  var BLOCK_TAGS = new Set("ADDRESS ARTICLE ASIDE BLOCKQUOTE BODY BR CAPTION DD DETAILS DIV DL DT FIELDSET FIGCAPTION FIGURE FOOTER FORM H1 H2 H3 H4 H5 H6 HEADER HGROUP HR LEGEND LI MAIN NAV OL P PRE SECTION SUMMARY TABLE TBODY TD TFOOT TH THEAD TR UL".split(" "));
+  var BLOCK_SELECTOR = Array.from(BLOCK_TAGS, (t) => t.toLowerCase()).join(",");
+  function suppressedFor(root, doc) {
+    const out = new Set;
+    for (const c of Array.from(root.querySelectorAll("input, select, textarea"))) {
+      if (classifyField(c).level !== "never" && !c.closest("[data-agent-hide]"))
+        continue;
+      const wrap = c.closest("label");
+      if (wrap)
+        out.add(wrap);
+      if (c.id)
+        for (const l of Array.from(root.querySelectorAll(`label[for="${escapeCss(doc, c.id)}"]`)))
+          out.add(l);
+      for (const attr of ["aria-labelledby", "aria-describedby"]) {
+        for (const id of (c.getAttribute(attr) ?? "").split(/\s+/)) {
+          const t = id ? doc.getElementById(id) : null;
+          if (t)
+            out.add(t);
+        }
+      }
+    }
+    return out;
+  }
+  function isSkipped(el, suppressed) {
+    return SKIP_TAGS.has(el.tagName.toUpperCase()) || suppressed.has(el) || el.hasAttribute("data-agent-hide") || el.hasAttribute("data-agentready-ui") || !isVisible(el);
+  }
+  function boxOf(el) {
+    if (BLOCK_TAGS.has(el.tagName.toUpperCase()))
+      return "block";
+    const d = el.ownerDocument.defaultView?.getComputedStyle(el).display ?? "";
+    if (!d || d === "inline" || d === "contents" || d === "none")
+      return "inline";
+    return d.startsWith("inline") ? "atomic" : "block";
+  }
+  function gatherText(node, suppressed, out) {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === 3)
+        out.push(child.nodeValue ?? "");
+      else if (child.nodeType === 1) {
+        const c = child;
+        if (isSkipped(c, suppressed))
+          continue;
+        const gap = boxOf(c) !== "inline";
+        if (gap)
+          out.push(" ");
+        gatherText(c, suppressed, out);
+        if (gap)
+          out.push(" ");
+      }
+    }
+  }
+  var squeeze = (s) => s.replace(/\s+/g, " ").trim();
+  function readableText(el, max = 800) {
+    if (el.closest("[data-agent-hide], [data-agentready-ui]"))
+      return "";
+    const root = el.getRootNode();
+    const parts = [];
+    gatherText(el, suppressedFor(root, el.ownerDocument), parts);
+    return squeeze(parts.join("")).slice(0, max);
+  }
+  function collectTextBlocks(doc, opts = {}) {
+    const deep = opts.deep === true;
+    const blocks = [];
+    let visits = 0;
+    let chars = 0;
+    let truncated = false;
+    let section = "";
+    const push = (owner, raw) => {
+      let text = squeeze(raw);
+      while (text.length >= 2) {
+        let cut = text.length;
+        if (cut > MAX_BLOCK_CHARS) {
+          const ws = text.lastIndexOf(" ", MAX_BLOCK_CHARS);
+          cut = ws > MAX_BLOCK_CHARS / 2 ? ws : MAX_BLOCK_CHARS;
+        }
+        const chunk = text.slice(0, cut).trim();
+        if (chunk) {
+          blocks.push({ el: owner, text: chunk, folded: foldText(chunk), section, tag: owner.tagName.toLowerCase() });
+          chars += chunk.length;
+        }
+        text = text.slice(cut).trim();
+        if (chars > MAX_TEXT_CHARS) {
+          truncated = true;
+          return;
+        }
+      }
+    };
+    const flow = (owner, parent, suppressed) => {
+      let buf = [];
+      const flush = () => {
+        if (buf.length)
+          push(owner, buf.join(""));
+        buf = [];
+      };
+      for (const child of Array.from(parent.childNodes)) {
+        if (truncated)
+          return;
+        if (child.nodeType === 3) {
+          buf.push(child.nodeValue ?? "");
+          continue;
+        }
+        if (child.nodeType !== 1)
+          continue;
+        const c = child;
+        if (++visits > MAX_TEXT_VISITS) {
+          truncated = true;
+          return;
+        }
+        const tag = c.tagName.toUpperCase();
+        if (deep && tag === "IFRAME") {
+          flush();
+          try {
+            const d = c.contentDocument;
+            if (d?.body)
+              flow(d.body, d.body, suppressedFor(d, d));
+          } catch {}
+          continue;
+        }
+        if (isSkipped(c, suppressed))
+          continue;
+        const box = boxOf(c);
+        if (box === "block" || c.querySelector(BLOCK_SELECTOR)) {
+          flush();
+          if (/^H[1-6]$/.test(tag)) {
+            const parts = [];
+            gatherText(c, suppressed, parts);
+            section = squeeze(parts.join("")).slice(0, 80);
+          }
+          flow(c, c, suppressed);
+        } else {
+          if (box === "atomic")
+            buf.push(" ");
+          gatherText(c, suppressed, buf);
+          if (box === "atomic")
+            buf.push(" ");
+        }
+        if (deep && c.shadowRoot) {
+          flush();
+          flow(c, c.shadowRoot, suppressedFor(c.shadowRoot, doc));
+        }
+      }
+      flush();
+    };
+    const body = doc.body ?? doc.documentElement;
+    flow(body, body, suppressedFor(doc, doc));
+    return { blocks, truncated };
+  }
+  var CJK_RUN = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}]+/gu;
+  var WORD_RE = /[\p{L}\p{N}$]+(?:-[\p{L}\p{N}]+)*/gu;
+  var STOPWORDS = new Set("a an the to for of in on at and or is are with from by how what where when why which who does do did can could should i you it be there please".split(" "));
+  function foldText(s) {
+    return s.normalize("NFKC").toLowerCase();
+  }
+  function parseQuery(query) {
+    const phrase = foldText(query).replace(/\s+/g, " ").trim();
+    const cjk = phrase.match(CJK_RUN) ?? [];
+    const all = phrase.replace(CJK_RUN, " ").match(WORD_RE) ?? [];
+    const kept = all.filter((w) => !STOPWORDS.has(w));
+    const strong = kept.filter((w) => w.length > 1);
+    return { words: strong.length ? strong : kept.length ? kept : all, cjk, phrase };
+  }
+  var queryTerms = (q) => [...q.words, ...q.cjk];
+  function stem(t) {
+    const s = t.replace(/(ies|ied|ing|ed|es|s|y)$/, "");
+    return s.length >= 4 ? s : t;
+  }
+  function wordHit(hay, t) {
+    if (!hay)
+      return 0;
+    if (hay.includes(t))
+      return 1;
+    if (t.includes("-")) {
+      const parts = t.split("-").filter(Boolean);
+      if (parts.length > 1 && parts.every((p) => hay.includes(p)))
+        return 0.8;
+    }
+    const s = stem(t);
+    return s !== t && hay.includes(s) ? 0.7 : 0;
+  }
+  function cjkHit(hay, run) {
+    if (!hay)
+      return 0;
+    if (hay.includes(run))
+      return 1;
+    if (run.length < 3)
+      return 0;
+    const grams = run.length - 1;
+    let found = 0;
+    for (let i = 0;i < grams; i++)
+      if (hay.includes(run.slice(i, i + 2)))
+        found++;
+    return found / grams >= 0.5 ? found / grams * 0.7 : 0;
+  }
+  function scoreFields(q, fields) {
+    let score = 0;
+    let matched = 0;
+    const tally = (hit) => {
+      let s = 0;
+      for (const [hay, weight] of fields)
+        s += weight * hit(hay);
+      if (s > 0)
+        matched++;
+      score += s;
+    };
+    for (const w of q.words)
+      tally((hay) => wordHit(hay, w));
+    for (const c of q.cjk)
+      tally((hay) => cjkHit(hay, c));
+    return { score, matched, total: q.words.length + q.cjk.length };
+  }
+  function scoreNodes(q, nodes, kind) {
+    if (kind === "text" || !queryTerms(q).length)
       return [];
     const scored = [];
     for (const n of nodes) {
@@ -758,26 +978,60 @@
         continue;
       if (kind === "field" && !["textbox", "searchbox", "checkbox", "radio", "combobox", "slider"].includes(n.role))
         continue;
-      let score = 0;
-      const nameL = n.name.toLowerCase();
-      const ctxL = (n.context ?? "").toLowerCase();
-      for (const t of terms) {
-        if (nameL.includes(t))
-          score += 6;
-        if (ctxL.includes(t))
-          score += 3;
-        if (n.role === "button" && /click|press|tap|activate/.test(t))
-          score += 2;
+      const nameL = foldText(n.name);
+      const { score: base } = scoreFields(q, [
+        [nameL, 6],
+        [foldText(n.context ?? ""), 3],
+        [foldText(n.text ?? ""), 4],
+        [foldText(n.value ?? ""), 3],
+        [foldText((n.options ?? []).join(" ")), 2],
+        [foldText(n.href ?? ""), 2]
+      ]);
+      let score = base;
+      if (n.role === "button") {
+        for (const w of q.words)
+          if (/click|press|tap|activate/.test(w))
+            score += 2;
       }
-      if (nameL === q)
+      if (nameL === q.phrase)
         score += 10;
-      if (nameL.startsWith(q))
+      else if (nameL.startsWith(q.phrase))
         score += 4;
       if (score > 0)
         scored.push({ node: n, score });
     }
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit).map((s) => s.node);
+    return scored.sort((a, b) => b.score - a.score);
+  }
+  function snippetOf(b, q) {
+    const text = b.folded.length === b.text.length ? b.text : b.folded;
+    if (text.length <= 160)
+      return text;
+    let at = -1;
+    for (const t of queryTerms(q)) {
+      const i = b.folded.indexOf(t) >= 0 ? b.folded.indexOf(t) : b.folded.indexOf(stem(t));
+      if (i >= 0 && (at < 0 || i < at))
+        at = i;
+    }
+    const from = Math.max(0, at < 0 ? 0 : at - 60);
+    const to = Math.min(text.length, from + 160);
+    return `${from > 0 ? "…" : ""}${text.slice(from, to).trim()}${to < text.length ? "…" : ""}`;
+  }
+  function scoreBlocks(q, blocks) {
+    if (!queryTerms(q).length)
+      return [];
+    const hits = [];
+    for (const b of blocks) {
+      const { score: base, matched, total } = scoreFields(q, [[b.folded, 5]]);
+      if (!matched || total > 1 && matched < Math.ceil(total / 2))
+        continue;
+      let score = base;
+      if (q.phrase.length > 1 && b.folded.includes(q.phrase))
+        score += 6;
+      if (/^h[1-6]$/.test(b.tag))
+        score += 3;
+      hits.push({ block: b, score, snippet: snippetOf(b, q) });
+    }
+    return hits.sort((a, b) => b.score - a.score || a.block.text.length - b.block.text.length);
   }
 
   // build/src/tools/controls.js
@@ -895,6 +1149,9 @@
       return `Ref "${ref}" is stale. Run find_on_page again.`;
     if (!env.isVisible(el))
       return "Target is not visible on the page.";
+    if (!isInteractive(el)) {
+      return 'Refused: target is page text, not an interactive element. Use read_target to read it, or find_on_page with kind "action" to find something to click.';
+    }
     const cls = classifyAction(el);
     if (cls.level === "never")
       return `Refused: ${cls.reason}.`;
@@ -910,6 +1167,9 @@
     const el = env.resolveRef(ref);
     if (!el)
       return `Ref "${ref}" is stale. Run find_on_page again.`;
+    if (!["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) {
+      return 'Refused: target is not a form field. Use find_on_page with kind "field" to locate one.';
+    }
     const cls = classifyField(el);
     if (cls.level === "never")
       return `Refused: ${cls.reason}. This field is never exposed to agents.`;
@@ -1266,12 +1526,15 @@
     return {
       name: "find_on_page",
       title: "Find on page",
-      description: "Find interactive elements or content on the page by natural-language description. " + "Returns semantic refs usable with read_target / activate_target / set_field. " + 'kind: "any" | "action" (buttons, links, tabs) | "field" (inputs, selects).',
+      description: "Search the page for a keyword or description. Matches interactive elements (buttons, links, fields) " + "AND visible page text (paragraphs, headings, tables, lists), in any language including Chinese/Japanese/Korean. " + "Interactive hits return refs for read_target / activate_target / set_field; text hits return a snippet " + "(call read_target with its ref for the surrounding content). " + 'kind: "any" (default) | "action" (buttons, links, tabs) | "field" (inputs, selects) | "text" (page content only). ' + "If nothing matches, the reply lists what was searched and what to try next.",
       inputSchema: {
         type: "object",
         properties: {
-          query: { type: "string", description: 'What to look for, e.g. "Add to cart for MacBook Pro"' },
-          kind: { type: "string", enum: ["any", "action", "field"], description: "Limit result kinds" }
+          query: {
+            type: "string",
+            description: 'Keyword(s) or a short description, e.g. "Add to cart for MacBook Pro", "三年保固". ' + "Prefer distinctive words as they appear on the page."
+          },
+          kind: { type: "string", enum: ["any", "action", "field", "text"], description: "Limit result kinds" }
         },
         required: ["query"]
       },
@@ -1314,22 +1577,82 @@
     };
     return clampOutput(out);
   }
+  function fitResults(results, meta, total) {
+    for (let n = results.length;n >= 1; n--) {
+      const omitted = total - n;
+      const out = JSON.stringify({
+        results: results.slice(0, n),
+        ...total > n ? { total, omitted, hint: `${omitted} more match(es) not shown; refine the query or use kind.` } : {},
+        ...meta
+      });
+      if (out.length <= MAX_OUTPUT_CHARS)
+        return out;
+    }
+    return clampOutput({ results: results.slice(0, 1), ...meta });
+  }
   function findOnPage(env, query, kind) {
     const snapshot = env.discover();
-    const narrow = kind === "action" || kind === "field" ? kind : undefined;
+    const narrow = kind === "action" || kind === "field" || kind === "text" ? kind : undefined;
     const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
-    const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
-    if (!hits.length)
-      return `No match for "${query}". Try get_page_context to see what is available.`;
-    const results = hits.map((n) => ({
-      ref: n.ref,
-      role: n.role,
-      name: n.name,
-      ...n.value ? { value: n.value } : {},
-      context: n.context || undefined,
-      actionRisk: n.action?.level ?? n.field?.level ?? undefined
-    }));
-    return clampOutput({ results });
+    const q = parseQuery(query);
+    const nodeHits = scoreNodes(q, snapshot.nodes, narrow);
+    const wantText = narrow === undefined || narrow === "text";
+    const index = wantText || !nodeHits.length ? collectTextBlocks(env.doc, { deep: env.config.shadowDiscovery === true }) : null;
+    const nodeTexts = snapshot.nodes.map((n) => foldText(n.text ?? n.name));
+    const textHits = (index ? scoreBlocks(q, index.blocks) : []).filter((h) => !nodeTexts.some((t) => t.includes(h.block.folded)));
+    if (!nodeHits.length && (!wantText || !textHits.length)) {
+      return noMatch(env, query, q, snapshot.nodes.length, index, narrow, wantText ? 0 : textHits.length);
+    }
+    const merged = [
+      ...nodeHits.map((h) => ({ score: h.score + 1, node: h.node })),
+      ...wantText ? textHits.map((h) => ({ score: h.score, text: h })) : []
+    ].sort((a, b) => b.score - a.score).slice(0, limit);
+    const total = nodeHits.length + (wantText ? textHits.length : 0);
+    const results = merged.map((m) => {
+      if (m.node) {
+        const n = m.node;
+        const risk = n.action?.level ?? n.field?.level;
+        return {
+          ref: n.ref,
+          role: n.role,
+          name: n.name,
+          ...n.value ? { value: n.value } : {},
+          ...n.context ? { context: n.context } : {},
+          ...risk ? { actionRisk: risk } : {}
+        };
+      }
+      const { block, snippet } = m.text;
+      return {
+        ref: refFor(block.el),
+        role: "text",
+        text: snippet,
+        ...block.section && !block.text.startsWith(block.section) ? { section: block.section } : {}
+      };
+    });
+    const meta = {};
+    if (index?.truncated)
+      meta.scanTruncated = "Page is very large; only part of its text was searched.";
+    return fitResults(results, meta, total);
+  }
+  function noMatch(env, query, q, interactive, index, kind, hiddenTextMatches) {
+    const lang = env.doc.documentElement?.getAttribute("lang") ?? "";
+    const out = {
+      results: [],
+      message: `No match for "${query}".`,
+      searched: {
+        terms: queryTerms(q),
+        interactiveElements: kind === "text" ? 0 : interactive,
+        textBlocks: index?.blocks.length ?? 0,
+        ...lang ? { pageLanguage: lang } : {}
+      },
+      hint: "Try a shorter or different keyword, a synonym, or the wording in the page language; " + 'a partial word often works (e.g. "warrant"). ' + (hiddenTextMatches ? `${hiddenTextMatches} page-text match(es) exist but kind "${kind}" excludes them: retry with kind "any" or "text". ` : "") + "get_page_context lists headings and forms to guide the next query."
+    };
+    if (index?.truncated)
+      out.scanTruncated = "Page is very large; only part of its text was searched.";
+    const headings = env.discover().headings.slice(0, 6).map((h) => h.text.slice(0, 50));
+    if (headings.length)
+      out.headings = headings;
+    return clampOutput(out);
   }
   function readTarget(env, ref) {
     const el = env.resolveRef(ref);
@@ -1356,7 +1679,9 @@
       out.currentValue = env.redact(el, el.value).slice(0, 200);
     }
     if (tag === "textarea" || !["INPUT", "SELECT", "BUTTON", "A", "TEXTAREA"].includes(el.tagName)) {
-      out.text = (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 800);
+      out.text = readableText(el, 800);
+      if (node.role === "generic")
+        out.name = String(out.text).slice(0, 80);
     }
     return clampOutput(out);
   }

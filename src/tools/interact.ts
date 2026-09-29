@@ -8,6 +8,7 @@ import type { AgentEnv } from '../env.js';
 import type { FormControl } from '../policy.js';
 import { classifyAction, classifyField } from '../policy.js';
 import type { ToolDefinition } from '../runtime.js';
+import { isInteractive } from '../semantic.js';
 import { setControlValue } from './controls.js';
 
 export function activateTargetTool(env: AgentEnv): ToolDefinition {
@@ -94,6 +95,10 @@ async function activate(env: AgentEnv, ref: string): Promise<string> {
   const el = env.resolveRef(ref);
   if (!el) return `Ref "${ref}" is stale. Run find_on_page again.`;
   if (!env.isVisible(el)) return 'Target is not visible on the page.';
+  // find_on_page also returns refs for plain page text; those are read-only, never clickable.
+  if (!isInteractive(el)) {
+    return 'Refused: target is page text, not an interactive element. Use read_target to read it, or find_on_page with kind "action" to find something to click.';
+  }
   const cls = classifyAction(el);
   if (cls.level === 'never') return `Refused: ${cls.reason}.`;
   const ok = await env.confirmGate({ title: `Activate "${cls.label}"`, detail: cls.reason, level: cls.level, el });
@@ -107,6 +112,9 @@ async function activate(env: AgentEnv, ref: string): Promise<string> {
 function setField(env: AgentEnv, ref: string, value: string): string {
   const el = env.resolveRef(ref);
   if (!el) return `Ref "${ref}" is stale. Run find_on_page again.`;
+  if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
+    return 'Refused: target is not a form field. Use find_on_page with kind "field" to locate one.';
+  }
   const cls = classifyField(el);
   if (cls.level === 'never') return `Refused: ${cls.reason}. This field is never exposed to agents.`;
   if (el.closest('[data-agent-hide]'))

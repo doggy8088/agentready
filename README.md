@@ -67,7 +67,7 @@ That's it. AgentReady discovers the page and registers:
 | Tool | Type | Description |
 |---|---|---|
 | `get_page_context` | read | Semantic summary: title, headings, regions, forms, counts |
-| `find_on_page` | read | Natural-language search over interactive elements → stable refs |
+| `find_on_page` | read | Keyword / natural-language search over interactive elements **and visible page text** (any language, incl. CJK) → stable refs or text snippets; a miss explains what was searched and what to try next |
 | `read_target` | read | Details of one ref: value, options, href, surrounding content |
 | `activate_target` | write | Click buttons / links / tabs (destructive ones need human approval) |
 | `set_field` | write | Set one input / select / checkbox / radio, firing real `input`+`change` events |
@@ -136,7 +136,7 @@ clamped to ~1,500 characters per call.
 
 | Content / action | Policy |
 |---|---|
-| Reading page content, search, navigation | ✅ Allow |
+| Reading page content, search, navigation | ✅ Allow — page-text search skips hidden content, `data-agent-hide` subtrees, scripts, form-control values, and the labels/hints of sensitive fields; text hits are read-only (`activate_target` / `set_field` refuse them) |
 | Filling normal form fields | ✅ Allow |
 | Hidden inputs, tokens, passwords, card fields (`cc-*`, CVV) | ⛔ Never exposed, never filled, values redacted |
 | Form submission, checkout, delete/purchase-style buttons | 🙋 Human approval via the on-page panel |

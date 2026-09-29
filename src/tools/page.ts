@@ -4,9 +4,21 @@
  */
 
 import type { AgentEnv, FormInfo } from '../env.js';
-import { clampOutput, MAX_RESULTS } from '../policy.js';
+import { clampOutput, MAX_OUTPUT_CHARS, MAX_RESULTS } from '../policy.js';
 import type { ToolDefinition } from '../runtime.js';
-import { matchNodes } from '../semantic.js';
+import {
+  collectTextBlocks,
+  type FindKind,
+  foldText,
+  parseQuery,
+  queryTerms,
+  readableText,
+  refFor,
+  type SemanticNode,
+  scoreBlocks,
+  scoreNodes,
+  type TextHit,
+} from '../semantic.js';
 
 export function pageContextTool(env: AgentEnv): ToolDefinition {
   return {
@@ -26,14 +38,22 @@ export function findTool(env: AgentEnv): ToolDefinition {
     name: 'find_on_page',
     title: 'Find on page',
     description:
-      'Find interactive elements or content on the page by natural-language description. ' +
-      'Returns semantic refs usable with read_target / activate_target / set_field. ' +
-      'kind: "any" | "action" (buttons, links, tabs) | "field" (inputs, selects).',
+      'Search the page for a keyword or description. Matches interactive elements (buttons, links, fields) ' +
+      'AND visible page text (paragraphs, headings, tables, lists), in any language including Chinese/Japanese/Korean. ' +
+      'Interactive hits return refs for read_target / activate_target / set_field; text hits return a snippet ' +
+      '(call read_target with its ref for the surrounding content). ' +
+      'kind: "any" (default) | "action" (buttons, links, tabs) | "field" (inputs, selects) | "text" (page content only). ' +
+      'If nothing matches, the reply lists what was searched and what to try next.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'What to look for, e.g. "Add to cart for MacBook Pro"' },
-        kind: { type: 'string', enum: ['any', 'action', 'field'], description: 'Limit result kinds' },
+        query: {
+          type: 'string',
+          description:
+            'Keyword(s) or a short description, e.g. "Add to cart for MacBook Pro", "三年保固". ' +
+            'Prefer distinctive words as they appear on the page.',
+        },
+        kind: { type: 'string', enum: ['any', 'action', 'field', 'text'], description: 'Limit result kinds' },
       },
       required: ['query'],
     },
@@ -82,21 +102,114 @@ function pageContext(env: AgentEnv): string {
   return clampOutput(out);
 }
 
+/** Serialize {results, ...meta}, dropping trailing results until the JSON fits the output budget (never cut mid-object). */
+function fitResults(results: object[], meta: Record<string, unknown>, total: number): string {
+  for (let n = results.length; n >= 1; n--) {
+    const omitted = total - n;
+    const out = JSON.stringify({
+      results: results.slice(0, n),
+      ...(total > n
+        ? { total, omitted, hint: `${omitted} more match(es) not shown; refine the query or use kind.` }
+        : {}),
+      ...meta,
+    });
+    if (out.length <= MAX_OUTPUT_CHARS) return out;
+  }
+  return clampOutput({ results: results.slice(0, 1), ...meta });
+}
+
 function findOnPage(env: AgentEnv, query: string, kind: string | undefined): string {
   const snapshot = env.discover();
-  const narrow = kind === 'action' || kind === 'field' ? kind : undefined;
+  const narrow: FindKind | undefined = kind === 'action' || kind === 'field' || kind === 'text' ? kind : undefined;
   const limit = Math.max(1, env.config.maxResults || MAX_RESULTS);
-  const hits = matchNodes(query, snapshot.nodes, { kind: narrow, limit });
-  if (!hits.length) return `No match for "${query}". Try get_page_context to see what is available.`;
-  const results = hits.map((n) => ({
-    ref: n.ref,
-    role: n.role,
-    name: n.name,
-    ...(n.value ? { value: n.value } : {}),
-    context: n.context || undefined,
-    actionRisk: n.action?.level ?? n.field?.level ?? undefined,
-  }));
-  return clampOutput({ results });
+  const q = parseQuery(query);
+
+  const nodeHits = scoreNodes(q, snapshot.nodes, narrow);
+  const wantText = narrow === undefined || narrow === 'text';
+  const index =
+    wantText || !nodeHits.length ? collectTextBlocks(env.doc, { deep: env.config.shadowDiscovery === true }) : null;
+  const nodeTexts = snapshot.nodes.map((n) => foldText(n.text ?? n.name));
+  // A text block wholly contained in an interactive element's label is that element, not new content.
+  const textHits = (index ? scoreBlocks(q, index.blocks) : []).filter(
+    (h) => !nodeTexts.some((t) => t.includes(h.block.folded)),
+  );
+
+  if (!nodeHits.length && (!wantText || !textHits.length)) {
+    return noMatch(env, query, q, snapshot.nodes.length, index, narrow, wantText ? 0 : textHits.length);
+  }
+
+  type Ranked =
+    | { score: number; node: SemanticNode; text?: undefined }
+    | { score: number; text: TextHit; node?: undefined };
+  const merged: Ranked[] = [
+    ...nodeHits.map((h): Ranked => ({ score: h.score + 1, node: h.node })),
+    ...(wantText ? textHits.map((h): Ranked => ({ score: h.score, text: h })) : []),
+  ]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+  const total = nodeHits.length + (wantText ? textHits.length : 0);
+
+  const results = merged.map((m) => {
+    if (m.node) {
+      const n = m.node;
+      const risk = n.action?.level ?? n.field?.level;
+      return {
+        ref: n.ref,
+        role: n.role,
+        name: n.name,
+        ...(n.value ? { value: n.value } : {}),
+        ...(n.context ? { context: n.context } : {}),
+        ...(risk ? { actionRisk: risk } : {}),
+      };
+    }
+    const { block, snippet } = m.text;
+    return {
+      ref: refFor(block.el),
+      role: 'text',
+      text: snippet,
+      ...(block.section && !block.text.startsWith(block.section) ? { section: block.section } : {}),
+    };
+  });
+  const meta: Record<string, unknown> = {};
+  if (index?.truncated) meta.scanTruncated = 'Page is very large; only part of its text was searched.';
+  return fitResults(results, meta, total);
+}
+
+/** Zero-hit reply: say what was searched and what to try, so the model can retry instead of giving up. */
+function noMatch(
+  env: AgentEnv,
+  query: string,
+  q: ReturnType<typeof parseQuery>,
+  interactive: number,
+  index: ReturnType<typeof collectTextBlocks> | null,
+  kind: FindKind | undefined,
+  hiddenTextMatches: number,
+): string {
+  const lang = env.doc.documentElement?.getAttribute('lang') ?? '';
+  const out: Record<string, unknown> = {
+    results: [],
+    message: `No match for "${query}".`,
+    searched: {
+      terms: queryTerms(q),
+      interactiveElements: kind === 'text' ? 0 : interactive,
+      textBlocks: index?.blocks.length ?? 0,
+      ...(lang ? { pageLanguage: lang } : {}),
+    },
+    hint:
+      'Try a shorter or different keyword, a synonym, or the wording in the page language; ' +
+      'a partial word often works (e.g. "warrant"). ' +
+      (hiddenTextMatches
+        ? `${hiddenTextMatches} page-text match(es) exist but kind "${kind}" excludes them: retry with kind "any" or "text". `
+        : '') +
+      'get_page_context lists headings and forms to guide the next query.',
+  };
+  if (index?.truncated) out.scanTruncated = 'Page is very large; only part of its text was searched.';
+  const headings = env
+    .discover()
+    .headings.slice(0, 6)
+    .map((h) => h.text.slice(0, 50));
+  if (headings.length) out.headings = headings;
+  return clampOutput(out);
 }
 
 function readTarget(env: AgentEnv, ref: string): string {
@@ -127,7 +240,9 @@ function readTarget(env: AgentEnv, ref: string): string {
     out.currentValue = env.redact(el, (el as HTMLInputElement).value).slice(0, 200);
   }
   if (tag === 'textarea' || !['INPUT', 'SELECT', 'BUTTON', 'A', 'TEXTAREA'].includes(el.tagName)) {
-    out.text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 800);
+    // readableText drops hidden/sensitive/control content that raw textContent would leak.
+    out.text = readableText(el, 800);
+    if (node.role === 'generic') out.name = String(out.text).slice(0, 80);
   }
   return clampOutput(out);
 }

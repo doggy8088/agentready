@@ -5,7 +5,16 @@ import { Inspector } from '../src/inspector.js';
 import { clampOutput, classifyAction, classifyField, classifyForm, MAX_OUTPUT_CHARS } from '../src/policy.js';
 import { Runtime } from '../src/runtime.js';
 import type { Discovery } from '../src/semantic.js';
-import { describeNode, discover, escapeCss, matchNodes, refFor, resolveRef } from '../src/semantic.js';
+import {
+  collectTextBlocks,
+  describeNode,
+  discover,
+  escapeCss,
+  matchNodes,
+  parseQuery,
+  refFor,
+  resolveRef,
+} from '../src/semantic.js';
 import { setControlValue } from '../src/tools/controls.js';
 import { analyzeForm, synthesizeFormTools } from '../src/tools/forms.js';
 import { activateTargetTool, fieldLabel, fillFormTool, setFieldTool } from '../src/tools/interact.js';
@@ -1095,6 +1104,262 @@ describe('radio group selection (plan 005)', () => {
     const doc = mount('<form method="post"><input name="" id="em"><button>Go</button></form>');
     const info = analyzeForm(doc.querySelector('form')!)!;
     expect(info.fields[0]!.key).toBe('em');
+  });
+});
+
+describe('find_on_page search quality', () => {
+  type Hit = { ref: string; role: string; name?: string; text?: string; section?: string };
+  type Found = {
+    results: Hit[];
+    total?: number;
+    omitted?: number;
+    message?: string;
+    searched?: Record<string, unknown>;
+  };
+
+  const setup = async (
+    html: string,
+    opts: { approve?: boolean; deep?: boolean } = {},
+  ): Promise<{ doc: Document; run: (name: string, args: Record<string, unknown>) => Promise<string> }> => {
+    const doc = mount(html);
+    const env = makeEnv(doc, opts);
+    const runtime = new Runtime();
+    for (const t of [findTool(env), readTargetTool(env), activateTargetTool(env), setFieldTool(env)]) {
+      await runtime.register(t);
+    }
+    return { doc, run: async (name, args) => (await runtime.executeTool(name, JSON.stringify(args))) as string };
+  };
+  const find = async (
+    run: (name: string, args: Record<string, unknown>) => Promise<string>,
+    query: string,
+    kind?: string,
+  ): Promise<Found> => JSON.parse(await run('find_on_page', { query, ...(kind ? { kind } : {}) })) as Found;
+
+  const PAGE = `
+    <main>
+      <h1>年度旗艦筆電</h1>
+      <p>本產品提供三年保固,支援 Thunderbolt 4。</p>
+      <p>Free <b>shipping</b> on orders over $50 within Taiwan.</p>
+      <div><button>加入購物車</button></div>
+      <a href="/warranty-policy">Read the full warranty details for every product we sell in our store today and more, including the fine print on exceed-eighty-chars</a>
+    </main>`;
+
+  describe('allowed: content that is on the page is found', () => {
+    it('finds CJK queries in button names (previously stripped to zero terms)', async () => {
+      const { run } = await setup(PAGE);
+      for (const q of ['加入購物車', '購物車']) {
+        const out = await find(run, q);
+        expect(out.results[0]?.name).toBe('加入購物車');
+        expect(out.results[0]?.role).toBe('button');
+      }
+    });
+
+    it('finds plain (non-interactive) page text, CJK and Latin, with a snippet and section', async () => {
+      const { run } = await setup(PAGE);
+      const zh = await find(run, '三年保固');
+      expect(zh.results[0]?.role).toBe('text');
+      expect(zh.results[0]?.text).toContain('三年保固');
+      expect(zh.results[0]?.section).toBe('年度旗艦筆電');
+      expect((await find(run, 'thunderbolt')).results[0]?.text).toContain('Thunderbolt');
+    });
+
+    it('matches phrases split across inline markup ("Free <b>shipping</b>")', async () => {
+      const { run } = await setup(PAGE);
+      const out = await find(run, 'free shipping');
+      expect(out.results[0]?.text).toBe('Free shipping on orders over $50 within Taiwan.');
+    });
+
+    it('ignores stop-words and stray single letters so "take a minute" does not match every label', async () => {
+      const { run } = await setup(
+        `${PAGE}<h2>Two ways in. Both take a minute.</h2><nav><a href="/a">Safety</a><a href="/b">Get started</a><button>Dark mode</button></nav>`,
+      );
+      const out = await find(run, 'take a minute');
+      expect(out.results.length).toBe(1);
+      expect(out.results[0]?.role).toBe('text');
+      expect(out.results[0]?.text).toBe('Two ways in. Both take a minute.');
+      // a heading hit does not repeat itself as its own "section"
+      expect(out.results[0]?.section).toBeUndefined();
+      // a lone single-letter query still works (existing behavior)
+      expect(matchNodes('q', discover(mount('<button>Q&A</button>')).nodes).length).toBe(1);
+    });
+
+    it('matches beyond the 80-char accessible-name cut-off', async () => {
+      const { run } = await setup(PAGE);
+      const out = await find(run, 'fine print');
+      expect(out.results[0]?.role).toBe('link');
+    });
+
+    it('tolerates simple inflection (warranties → warranty) and full-width / case folding', async () => {
+      const { run } = await setup(`${PAGE}<p>ＭＡＣＢＯＯＫ Air is lightweight.</p>`);
+      expect((await find(run, 'warranties')).results.length).toBeGreaterThan(0);
+      expect((await find(run, 'macbook air')).results[0]?.text).toContain('lightweight');
+    });
+
+    it('finds a keyword deep inside one very long paragraph', async () => {
+      const filler = 'lorem ipsum dolor sit amet '.repeat(400);
+      const { run } = await setup(`<main><p>${filler} zebra-crossing-marker ${filler}</p></main>`);
+      const out = await find(run, 'zebra-crossing-marker');
+      expect(out.results[0]?.text).toContain('zebra-crossing-marker');
+    });
+
+    it('a text ref works with read_target for surrounding content', async () => {
+      const { run } = await setup(PAGE);
+      const hit = (await find(run, '三年保固')).results[0]!;
+      const read = JSON.parse(await run('read_target', { ref: hit.ref })) as { text: string };
+      expect(read.text).toContain('三年保固');
+    });
+
+    it('does not repeat an interactive element as a text hit', async () => {
+      const { run } = await setup(PAGE);
+      const out = await find(run, '加入購物車');
+      expect(out.results.filter((r) => r.role === 'text')).toEqual([]);
+    });
+
+    it('respects CSS layout: display:block spans are separate blocks, inline-block neighbours keep a space', () => {
+      const doc = mount(
+        '<main><span style="display:block">alpha block</span><span style="display:block">beta block</span>' +
+          '<p><span style="display:inline-block">gamma</span><span style="display:inline-block">delta</span> tail</p></main>',
+      );
+      const texts = collectTextBlocks(doc).blocks.map((b) => b.text);
+      expect(texts).toEqual(['alpha block', 'beta block', 'gamma delta tail']);
+    });
+
+    it('question words are not search terms ("how long does setup take" → setup / long / take)', () => {
+      expect(parseQuery('how long does setup take').words).toEqual(['long', 'setup', 'take']);
+    });
+
+    it('kind narrows: "text" skips controls, "action" skips content', async () => {
+      const { run } = await setup(PAGE);
+      expect((await find(run, 'warranty', 'text')).results.every((r) => r.role === 'text')).toBe(true);
+      const action = await find(run, '三年保固', 'action');
+      expect(action.results).toEqual([]);
+      expect(JSON.stringify(action)).toContain('kind');
+    });
+  });
+
+  describe('response shape guides the next query', () => {
+    it('no-match is valid JSON with results:[], what was searched, and next-step hints', async () => {
+      const { run } = await setup(PAGE);
+      const raw = await run('find_on_page', { query: 'nonexistent-xyz' });
+      const out = JSON.parse(raw) as Found & { hint: string; headings: string[] };
+      expect(out.results).toEqual([]);
+      expect(out.message).toContain('No match');
+      expect(out.searched?.interactiveElements).toBe(2);
+      expect(Number(out.searched?.textBlocks)).toBeGreaterThan(0);
+      expect(out.hint).toContain('synonym');
+      expect(out.headings).toContain('年度旗艦筆電');
+    });
+
+    it('stays valid JSON within the output budget and reports omitted matches', async () => {
+      const rows = Array.from(
+        { length: 12 },
+        (_, i) => `<p>Widget ${i}: ${'a fairly long description of the widget '.repeat(6)}</p>`,
+      ).join('');
+      const { run } = await setup(`<main>${rows}</main>`);
+      const raw = await run('find_on_page', { query: 'widget' });
+      expect(raw.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+      const out = JSON.parse(raw) as Found;
+      expect(out.total).toBe(12);
+      expect(out.omitted).toBe(12 - out.results.length);
+      expect(out.omitted).toBeGreaterThan(0);
+    });
+  });
+
+  describe('refused: nothing sensitive, hidden, or non-content is searchable', () => {
+    const SENSITIVE = `
+      <main>
+        <p>Public note about pricing.</p>
+        <form>
+          <label for="pw">Secret passphrase entry</label><input id="pw" type="password" aria-describedby="pwhint">
+          <small id="pwhint">passphrase must contain a mongoose</small>
+          <label>Card holder cardnumber <input name="card_number" autocomplete="cc-number"></label>
+          <label for="tok">Vault token</label><input id="tok" data-agent-hide>
+          <label for="em">Contact email</label><input id="em" name="email">
+        </form>
+        <div data-agent-hide><p>internal-only aardvark</p></div>
+        <p hidden>hidden-attr walrus</p>
+        <p aria-hidden="true">aria-hidden narwhal</p>
+        <p style="display:none">display-none platypus</p>
+        <script>var x = "script-body okapi";</script>
+        <style>.okapi-style { color: red }</style>
+        <noscript>noscript quokka</noscript>
+        <template><p>template axolotl</p></template>
+        <textarea name="notes">textarea-default lemur</textarea>
+        <select name="s"><option>option-only tapir</option></select>
+        <div data-agentready-ui><p>inspector-ui capybara</p></div>
+      </main>`;
+
+    it('never surfaces labels or hints of sensitive / data-agent-hide controls', async () => {
+      const { run } = await setup(SENSITIVE);
+      for (const q of ['passphrase', 'mongoose', 'cardnumber', 'vault token']) {
+        const out = await find(run, q);
+        expect(out.results).toEqual([]);
+      }
+      // …while the ordinary label and page copy remain searchable (guards against over-blocking).
+      expect((await find(run, 'contact email')).results.length).toBeGreaterThan(0);
+      expect((await find(run, 'pricing')).results[0]?.text).toContain('Public note');
+    });
+
+    it('never surfaces data-agent-hide subtrees, hidden content, or non-content markup', async () => {
+      const { run } = await setup(SENSITIVE);
+      for (const q of ['aardvark', 'walrus', 'narwhal', 'platypus', 'okapi', 'quokka', 'axolotl', 'capybara']) {
+        expect((await find(run, q)).results).toEqual([]);
+      }
+    });
+
+    it('keeps control values and options out of the text index (they stay reachable only as fields)', async () => {
+      const { run } = await setup(SENSITIVE);
+      for (const q of ['lemur', 'tapir']) {
+        expect((await find(run, q, 'text')).results).toEqual([]);
+      }
+    });
+
+    it('read_target on a container omits controls, scripts and sensitive labels', async () => {
+      const { doc, run } = await setup(SENSITIVE);
+      const out = JSON.parse(await run('read_target', { ref: refFor(doc.querySelector('main')!) })) as {
+        text: string;
+        name: string;
+      };
+      for (const leak of ['passphrase', 'mongoose', 'cardnumber', 'Vault', 'aardvark', 'okapi', 'lemur', 'tapir']) {
+        expect(out.text).not.toContain(leak);
+        expect(out.name).not.toContain(leak);
+      }
+      expect(out.text).toContain('Public note');
+    });
+
+    it('activate_target refuses a page-text ref and does not click it', async () => {
+      const { doc, run } = await setup('<main><p id="t">Delete everything now</p><button id="b">Open</button></main>');
+      let clicks = 0;
+      doc.querySelector('#t')!.addEventListener('click', () => clicks++);
+      const hit = (await find(run, 'delete everything', 'text')).results[0]!;
+      expect(await run('activate_target', { ref: hit.ref })).toStartWith('Refused:');
+      expect(clicks).toBe(0);
+      // allowed counterpart: a real button still activates
+      expect(await run('activate_target', { ref: refFor(doc.querySelector('#b')!) })).toContain('Activated "Open"');
+    });
+
+    it('set_field refuses a page-text ref and leaves it untouched', async () => {
+      const { doc, run } = await setup('<main><p id="t">Quantity</p><input id="q" name="qty" aria-label="Qty"></main>');
+      const hit = (await find(run, 'quantity', 'text')).results[0]!;
+      expect(await run('set_field', { ref: hit.ref, value: '5' })).toStartWith('Refused:');
+      expect((doc.querySelector('#t') as unknown as { value?: string }).value).toBeUndefined();
+      // allowed counterpart: a real field is still settable
+      expect(await run('set_field', { ref: refFor(doc.querySelector('#q')!), value: '5' })).toContain('Set "');
+    });
+  });
+
+  describe('deep (shadow DOM / iframe) text is opt-in', () => {
+    it('indexes shadow-root text only when deep is on', () => {
+      const doc = mount('<main><p>light dom nuthatch</p></main>');
+      const host = doc.createElement('spike-widget');
+      host.attachShadow({ mode: 'open' }).innerHTML = '<p>shadow dom kingfisher</p>';
+      doc.body.appendChild(host);
+      const flat = collectTextBlocks(doc).blocks.map((b) => b.text);
+      expect(flat).toContain('light dom nuthatch');
+      expect(flat).not.toContain('shadow dom kingfisher');
+      const deep = collectTextBlocks(doc, { deep: true }).blocks.map((b) => b.text);
+      expect(deep).toContain('shadow dom kingfisher');
+    });
   });
 });
 
